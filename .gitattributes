@@ -1,0 +1,12 @@
+# Normalize line endings
+* text=auto eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
+
+# Generated code: collapsed in GitHub diffs, excluded from language stats
+backend/internal/store/db/** linguist-generated=true
+frontend/src/api/schema.ts linguist-generated=true

@@ -1,0 +1,55 @@
+# ---------------------------------------------------------------
+# Local-only notes (plans, descriptions). Anchored to repo root so
+# that backend/internal (Go packages) is NOT ignored.
+# ---------------------------------------------------------------
+/internal/
+
+# ---------------------------------------------------------------
+# Secrets / environment
+# ---------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---------------------------------------------------------------
+# Go
+# ---------------------------------------------------------------
+/bin/
+backend/bin/
+*.exe
+*.test
+*.out
+coverage.*
+go.work
+go.work.sum
+
+# ---------------------------------------------------------------
+# Node / frontend
+# ---------------------------------------------------------------
+node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/test-results/
+frontend/playwright-report/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------------------------------------------------------------
+# Editors / OS
+# ---------------------------------------------------------------
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# ---------------------------------------------------------------
+# Local docker volumes / data
+# ---------------------------------------------------------------
+.data/
