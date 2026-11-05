@@ -1,8 +1,9 @@
 # Family Calendar — developer entrypoint.
 # Run `make` or `make help` to see available targets.
 #
-# Go tools (goose, sqlc) are expected to be declared via the `tool`
-# directive in backend/go.mod and invoked with `go tool <name>`.
+# Migrations are managed by backend/cmd/migrate (goose library + pgx only).
+# Other Go tools (sqlc) are declared via the `tool` directive in
+# backend/go.mod and invoked with `go tool <name>`.
 
 SHELL := /usr/bin/env bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -19,6 +20,16 @@ MIGRATIONS   := migrations
 # Load local env (DATABASE_URL etc.) if present; never committed.
 -include .env
 export
+
+# Matches the defaults in deploy/docker-compose.dev.yml, so `make db-up
+# migrate-up` works even without a .env file. Set only from .env or the make
+# command line (`make migrate-up DATABASE_URL=...`): a DATABASE_URL left in the
+# shell by another project must not point migrations at the wrong database.
+ifneq ($(origin DATABASE_URL),file)
+DATABASE_URL := postgres://calendar:calendar@localhost:5433/calendar?sslmode=disable
+endif
+
+MIGRATE := go run ./cmd/migrate
 
 IMAGE   ?= family-calendar
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -65,20 +76,20 @@ generate: ## Run code generators (sqlc, OpenAPI types)
 
 .PHONY: migrate-up
 migrate-up: ## Apply all pending migrations
-	cd $(BACKEND_DIR) && go tool goose -dir $(MIGRATIONS) postgres "$$DATABASE_URL" up
+	cd $(BACKEND_DIR) && $(MIGRATE) up
 
 .PHONY: migrate-down
 migrate-down: ## Roll back the last migration
-	cd $(BACKEND_DIR) && go tool goose -dir $(MIGRATIONS) postgres "$$DATABASE_URL" down
+	cd $(BACKEND_DIR) && $(MIGRATE) down
 
 .PHONY: migrate-status
 migrate-status: ## Show migration status
-	cd $(BACKEND_DIR) && go tool goose -dir $(MIGRATIONS) postgres "$$DATABASE_URL" status
+	cd $(BACKEND_DIR) && $(MIGRATE) status
 
 .PHONY: migrate-create
 migrate-create: ## Create a new SQL migration: make migrate-create name=add_events
 	@test -n "$(name)" || (echo "usage: make migrate-create name=<name>" && exit 1)
-	cd $(BACKEND_DIR) && go tool goose -dir $(MIGRATIONS) -s create $(name) sql
+	cd $(BACKEND_DIR) && $(MIGRATE) -dir $(MIGRATIONS) create $(name)
 
 ##@ Quality
 
