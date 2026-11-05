@@ -49,12 +49,12 @@ Browser ──HTTPS──▶ Caddy ──▶ Go app (API + embedded React SPA) �
 - Docker with the Compose plugin
 - [golangci-lint](https://golangci-lint.run/welcome/install/) (for linting)
 - A Google OAuth client ([how to create one](https://developers.google.com/identity/openid-connect/openid-connect#appsetup))
-  with the redirect URI `http://localhost:8080/auth/callback`
+  with the redirect URI `http://localhost:5173/auth/callback`
 
 ### Run locally
 
 ```sh
-cp deploy/.env.example .env   # then fill in the OAuth client ID and secret
+cp .env.example .env          # then fill in OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, SESSION_SECRET
 make db-up                    # start PostgreSQL
 make migrate-up               # apply database migrations
 make dev                      # start backend and frontend dev server

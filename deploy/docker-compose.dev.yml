@@ -1,0 +1,35 @@
+# Local development services. Usage: `make db-up` / `make db-down`.
+# Values come from the root .env (exported by the Makefile); defaults below
+# let it start even without one.
+name: family-calendar-dev
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-calendar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-calendar}
+      POSTGRES_DB: ${POSTGRES_DB:-calendar}
+    # Same small-footprint settings as production, so dev behaves alike.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=20
+      - -c
+      - log_min_duration_statement=200ms
+    ports:
+      # Bound to localhost only: not reachable from other machines.
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
