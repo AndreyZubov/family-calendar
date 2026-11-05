@@ -2,8 +2,7 @@
 # Run `make` or `make help` to see available targets.
 #
 # Migrations are managed by backend/cmd/migrate (goose library + pgx only).
-# Other Go tools (sqlc) are declared via the `tool` directive in
-# backend/go.mod and invoked with `go tool <name>`.
+# sqlc runs via `go run` at a pinned version (see SQLC_VERSION).
 
 SHELL := /usr/bin/env bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -30,6 +29,11 @@ DATABASE_URL := postgres://calendar:calendar@localhost:5433/calendar?sslmode=dis
 endif
 
 MIGRATE := go run ./cmd/migrate
+
+# sqlc is run at a pinned version instead of being a `tool` in go.mod: its
+# dependency tree (SQL parsers for several databases) would bloat go.mod.
+SQLC_VERSION := v1.31.1
+SQLC := go run github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
 
 IMAGE   ?= family-calendar
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -68,9 +72,15 @@ db-down: ## Stop local Postgres (data volume is kept)
 	docker compose -f $(DEV_COMPOSE) down
 
 .PHONY: generate
-generate: ## Run code generators (sqlc, OpenAPI types)
-	cd $(BACKEND_DIR) && go tool sqlc generate
-	cd $(FRONTEND_DIR) && npm run generate:api
+generate: generate-backend ## Run code generators
+
+.PHONY: generate-backend
+generate-backend: ## Generate Go code from SQL queries (sqlc)
+	cd $(BACKEND_DIR) && $(SQLC) generate
+
+.PHONY: sqlc-check
+sqlc-check: ## Fail if generated sqlc code is out of date (for CI)
+	cd $(BACKEND_DIR) && $(SQLC) diff
 
 ##@ Database
 
@@ -110,6 +120,10 @@ test: test-backend test-frontend ## Run all tests
 .PHONY: test-backend
 test-backend:
 	cd $(BACKEND_DIR) && go test -race -count=1 ./...
+
+.PHONY: test-db
+test-db: db-up ## Run backend tests including DB integration tests (local Postgres)
+	cd $(BACKEND_DIR) && TEST_DATABASE_URL="$(DATABASE_URL)" go test -race -count=1 ./...
 
 .PHONY: test-frontend
 test-frontend:

@@ -1,4 +1,3 @@
-// Package store provides access to PostgreSQL.
 package store
 
 import (
