@@ -1,6 +1,7 @@
 // Command server runs the Family Calendar HTTP API.
 //
-// Startup: load config → connect to Postgres → apply migrations → serve.
+// Startup: load config → connect to Postgres → apply migrations →
+// discover the OIDC provider → serve.
 // On SIGINT/SIGTERM it stops accepting new connections, lets in-flight
 // requests finish (up to SHUTDOWN_TIMEOUT) and closes the database pool.
 package main
@@ -14,7 +15,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/AndreyZubov/family-calendar/backend/internal/auth"
 	"github.com/AndreyZubov/family-calendar/backend/internal/config"
 	"github.com/AndreyZubov/family-calendar/backend/internal/httpapi"
 	"github.com/AndreyZubov/family-calendar/backend/internal/store"
@@ -57,7 +60,13 @@ func run() error {
 	}
 	log.Info("migrations up to date")
 
-	api := httpapi.New(httpapi.Deps{Log: log, DB: db, Version: version})
+	authDeps, err := newAuth(ctx, cfg, db)
+	if err != nil {
+		return err
+	}
+	go cleanupSessions(ctx, authDeps.Sessions, log)
+
+	api := httpapi.New(httpapi.Deps{Log: log, DB: db, Version: version, Auth: authDeps})
 	srv := httpapi.NewServer(cfg.HTTPAddr, api, log)
 
 	serveErr := make(chan error, 1)
@@ -90,6 +99,57 @@ func run() error {
 	}
 	log.Info("stopped")
 	return nil
+}
+
+// newAuth wires the sign-in flow. OIDC discovery is a network request to the
+// provider; it gets its own timeout so a provider outage fails startup fast.
+func newAuth(ctx context.Context, cfg config.Config, db *store.Store) (httpapi.AuthDeps, error) {
+	discoverCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	provider, err := auth.NewOIDCProvider(discoverCtx, auth.OIDCConfig{
+		IssuerURL:    cfg.OIDCIssuerURL,
+		ClientID:     cfg.OIDCClientID,
+		ClientSecret: cfg.OIDCClientSecret,
+		RedirectURL:  cfg.OIDCRedirectURL(),
+	})
+	if err != nil {
+		return httpapi.AuthDeps{}, err
+	}
+
+	flow, err := auth.NewFlowSealer(cfg.SessionSecret)
+	if err != nil {
+		return httpapi.AuthDeps{}, fmt.Errorf("login flow sealer: %w", err)
+	}
+
+	return httpapi.AuthDeps{
+		Provider: provider,
+		Sessions: auth.NewSessions(db, cfg.SessionTTL),
+		Flow:     flow,
+		Cookies:  auth.Cookies{Secure: cfg.SecureCookies()},
+		Users:    db,
+	}, nil
+}
+
+// cleanupSessions deletes expired sessions every hour until ctx is done.
+// Expired sessions are already rejected on lookup; this only reclaims space.
+func cleanupSessions(ctx context.Context, s *auth.Sessions, log *slog.Logger) {
+	t := time.NewTicker(time.Hour)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			n, err := s.DeleteExpired(ctx)
+			if err != nil {
+				log.Warn("cleanup expired sessions", "err", err)
+				continue
+			}
+			if n > 0 {
+				log.Info("expired sessions deleted", "count", n)
+			}
+		}
+	}
 }
 
 // newLogger returns JSON logs in production (machine-readable, one object

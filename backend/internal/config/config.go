@@ -4,6 +4,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -39,7 +40,25 @@ type Config struct {
 
 	// ShutdownTimeout is how long in-flight requests get to finish on stop.
 	ShutdownTimeout time.Duration
+
+	// OIDC identity provider (Google by default).
+	OIDCIssuerURL    string
+	OIDCClientID     string
+	OIDCClientSecret string // secret: never log
+
+	// SessionSecret is the decoded SESSION_SECRET (>= 32 bytes). Used to
+	// derive keys, e.g. for the encrypted login-flow cookie. Secret.
+	SessionSecret []byte
+	// SessionTTL is how long a session lives without activity.
+	SessionTTL time.Duration
 }
+
+// OIDCRedirectURL is where the provider sends the browser after sign-in.
+// It must be registered in the provider's console exactly as returned here.
+func (c Config) OIDCRedirectURL() string { return c.BaseURL.String() + "/auth/callback" }
+
+// SecureCookies reports whether cookies must be marked Secure (HTTPS).
+func (c Config) SecureCookies() bool { return c.BaseURL.Scheme == "https" }
 
 // IsProduction reports whether the app runs in production mode.
 func (c Config) IsProduction() bool { return c.Env == EnvProduction }
@@ -59,6 +78,10 @@ func Load(getenv func(string) string) (Config, error) {
 		Env:         get("APP_ENV", EnvDevelopment),
 		HTTPAddr:    get("HTTP_ADDR", ":8080"),
 		DatabaseURL: get("DATABASE_URL", ""),
+
+		OIDCIssuerURL:    get("OIDC_ISSUER_URL", "https://accounts.google.com"),
+		OIDCClientID:     get("OIDC_CLIENT_ID", ""),
+		OIDCClientSecret: get("OIDC_CLIENT_SECRET", ""),
 	}
 
 	if cfg.Env != EnvDevelopment && cfg.Env != EnvProduction {
@@ -92,6 +115,28 @@ func Load(getenv func(string) string) (Config, error) {
 	cfg.ShutdownTimeout, err = time.ParseDuration(get("SHUTDOWN_TIMEOUT", "15s"))
 	if err != nil || cfg.ShutdownTimeout <= 0 {
 		errs = append(errs, errors.New("SHUTDOWN_TIMEOUT: must be a positive duration, e.g. 15s"))
+	}
+
+	if u, err := url.Parse(cfg.OIDCIssuerURL); err != nil || u.Scheme != "https" || u.Host == "" {
+		errs = append(errs, errors.New("OIDC_ISSUER_URL: must be an https URL"))
+	}
+	if cfg.OIDCClientID == "" {
+		errs = append(errs, errors.New("OIDC_CLIENT_ID: required"))
+	}
+	if cfg.OIDCClientSecret == "" {
+		errs = append(errs, errors.New("OIDC_CLIENT_SECRET: required"))
+	}
+
+	// Error messages never include the secret's value.
+	secret, err := base64.StdEncoding.DecodeString(get("SESSION_SECRET", ""))
+	if err != nil || len(secret) < 32 {
+		errs = append(errs, errors.New("SESSION_SECRET: required, base64 of at least 32 random bytes (openssl rand -base64 32)"))
+	}
+	cfg.SessionSecret = secret
+
+	cfg.SessionTTL, err = time.ParseDuration(get("SESSION_TTL", "720h"))
+	if err != nil || cfg.SessionTTL < time.Hour {
+		errs = append(errs, errors.New("SESSION_TTL: must be a duration of at least 1h, e.g. 720h"))
 	}
 
 	if err := errors.Join(errs...); err != nil {

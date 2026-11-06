@@ -19,6 +19,7 @@ type Deps struct {
 	Log     *slog.Logger
 	DB      Pinger
 	Version string
+	Auth    AuthDeps
 }
 
 // API is the application's HTTP handler.
@@ -49,6 +50,14 @@ func New(deps Deps) *API {
 func (a *API) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /healthz", a.handleHealthz)
 	mux.HandleFunc("GET /readyz", a.handleReadyz)
+
+	// Sign-in (browser navigations, not fetch calls).
+	mux.HandleFunc("GET /auth/login", a.handleLogin)
+	mux.HandleFunc("GET /auth/callback", a.handleCallback)
+	mux.HandleFunc("POST /auth/logout", a.handleLogout)
+
+	// API: everything below requires a signed-in user.
+	mux.HandleFunc("GET /api/me", a.requireUser(a.handleMe))
 
 	// Unknown API paths get a JSON 404 instead of the default text one.
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
