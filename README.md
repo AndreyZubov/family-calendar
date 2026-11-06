@@ -44,7 +44,7 @@ Browser ──HTTPS──▶ Caddy ──▶ Go app (API + embedded React SPA) �
 
 ### Prerequisites
 
-- Go 1.24+
+- Go 1.27+
 - Node.js 22+
 - Docker with the Compose plugin
 - [golangci-lint](https://golangci-lint.run/welcome/install/) (for linting)
