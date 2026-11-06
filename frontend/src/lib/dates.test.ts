@@ -98,13 +98,23 @@ describe('toInstants / fromInstants', () => {
     expect(r).not.toBeNull()
     if (!r) return
     expect(
-      fromInstants({ allDay: false, startsAt: r.startsAt.toISOString(), endsAt: r.endsAt.toISOString() }),
+      fromInstants({
+        allDay: false,
+        startsAt: r.startsAt.toISOString(),
+        endsAt: r.endsAt.toISOString(),
+      }),
     ).toEqual(values)
   })
 
   it('returns null for incomplete input', () => {
     expect(
-      toInstants({ allDay: false, startDate: '2026-11-10', startTime: '', endDate: '', endTime: '' }),
+      toInstants({
+        allDay: false,
+        startDate: '2026-11-10',
+        startTime: '',
+        endDate: '',
+        endTime: '',
+      }),
     ).toBeNull()
   })
 })

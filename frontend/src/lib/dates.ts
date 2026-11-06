@@ -32,7 +32,9 @@ export function startOfWeek(d: Date): Date {
 
 export function isSameDay(a: Date, b: Date): boolean {
   return (
-    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
   )
 }
 
@@ -124,7 +126,11 @@ export function fromInstants(ev: { allDay: boolean; startsAt: string; endsAt: st
 }
 
 const monthFmt = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' })
-const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
+const dayFmt = new Intl.DateTimeFormat(undefined, {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+})
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
 const shortDateFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' })
 const weekdayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short' })
