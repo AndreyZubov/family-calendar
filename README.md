@@ -1,6 +1,7 @@
 # Family Calendar
 
 [![CI](https://github.com/AndreyZubov/family-calendar/actions/workflows/ci.yml/badge.svg)](https://github.com/AndreyZubov/family-calendar/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/AndreyZubov/family-calendar/actions/workflows/codeql.yml/badge.svg)](https://github.com/AndreyZubov/family-calendar/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A minimal, self-hosted calendar for families. Sign in with Google, create events,
@@ -108,6 +109,11 @@ Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and th
 ## Security
 
 Please do not report security issues in public issues. See [SECURITY.md](SECURITY.md).
+
+Supply chain: dependencies, base images and GitHub Actions are pinned
+(versions, lock files, image digests, action commit SHAs) and updated by
+Dependabot after a 14-day cooldown. CI runs govulncheck, `npm audit` (including
+registry signatures), Trivy on the image and CodeQL on the code.
 
 ## License
 

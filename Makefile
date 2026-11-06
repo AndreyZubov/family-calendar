@@ -196,6 +196,16 @@ e2e-binary: db-up build build-devoidc ## Run end-to-end tests against the binary
 
 GOVULNCHECK := go run golang.org/x/vuln/cmd/govulncheck@v1.9.0
 
+TRIVY := docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v fc-trivy-cache:/root/.cache \
+	aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+
+.PHONY: scan-image
+scan-image: docker-build ## Scan the Docker image (vulnerabilities) and Dockerfile (misconfigurations) with Trivy
+	$(TRIVY) image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 $(IMAGE):$(VERSION)
+	docker run --rm -v "$(CURDIR):/src:ro" -v fc-trivy-cache:/root/.cache \
+		aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c \
+		config --severity HIGH,CRITICAL --exit-code 1 /src
+
 .PHONY: vuln
 vuln: ## Check Go dependencies for known vulnerabilities
 	cd $(BACKEND_DIR) && $(GOVULNCHECK) ./...

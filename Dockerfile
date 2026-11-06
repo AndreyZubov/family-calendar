@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 #
 # Production image: one static Go binary with the React app embedded,
 # on a distroless base (no shell, no package manager), running as non-root.
@@ -6,7 +5,9 @@
 #   docker build -t family-calendar .
 #
 # Base images are pinned by version and digest (tags can be moved; digests
-# cannot). Dependabot proposes updates.
+# cannot). Dependabot proposes updates. No `# syntax=` line on purpose: the
+# Dockerfile frontend built into Docker (23+) supports everything used here,
+# so no extra, unpinned frontend image is pulled at build time.
 
 # ---- 1. Frontend: install exactly the locked dependencies and build ----------
 FROM node:24.22.2-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS frontend

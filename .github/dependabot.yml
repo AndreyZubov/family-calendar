@@ -1,0 +1,67 @@
+# Dependabot opens pull requests to update dependencies; CI tests each one.
+#
+# - Weekly, grouped: one PR per ecosystem for minor/patch updates, separate
+#   PRs for major versions (they may need code changes).
+# - Cooldown: a release must be 14 days old before Dependabot proposes it, so
+#   the community has time to notice a compromised or broken release.
+#   Security updates ignore the cooldown and arrive as soon as possible.
+# - Commit messages follow Conventional Commits.
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directory: /backend
+    schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 14 }
+    commit-message: { prefix: "build(deps)" }
+    labels: [dependencies, go]
+    groups:
+      go-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 14 }
+    versioning-strategy: increase
+    commit-message: { prefix: "build(deps)" }
+    labels: [dependencies, javascript]
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Node types follow the Node.js major in .nvmrc, not the newest one.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # TypeScript 6.1+/7 is not supported yet by typescript-eslint and
+      # openapi-typescript (see their peerDependencies); revisit when it is.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  # Base images in the Dockerfile (pinned by version + digest).
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 14 }
+    commit-message: { prefix: "build(deps)" }
+    labels: [dependencies, docker]
+
+  # Caddy and Postgres images in deploy/*.yml.
+  - package-ecosystem: docker-compose
+    directory: /deploy
+    schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 14 }
+    commit-message: { prefix: "build(deps)" }
+    labels: [dependencies, docker]
+
+  # Actions in .github/workflows (pinned by commit SHA; Dependabot updates
+  # the SHA and the version comment together).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 14 }
+    commit-message: { prefix: "ci(deps)" }
+    labels: [dependencies, github-actions]
+    groups:
+      actions:
+        patterns: ["*"]
