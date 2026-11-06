@@ -5,7 +5,8 @@ import { defineConfig } from 'vitest/config'
 // Vite (:5173), which forwards API and sign-in requests to Go. To the
 // browser everything is one origin, so cookies and the OIDC redirect behave
 // exactly as in production, where Go serves the built app itself.
-const backend = 'http://localhost:8080'
+// BACKEND_URL lets end-to-end tests point Vite at their own backend.
+const backend = process.env.BACKEND_URL ?? 'http://localhost:8080'
 
 export default defineConfig({
   plugins: [react()],
@@ -24,6 +25,7 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    include: ['src/**/*.test.{ts,tsx}'], // e2e/ is Playwright's
     setupFiles: ['./src/test/setup.ts'],
     css: false,
   },

@@ -21,9 +21,9 @@ before you spend time on code.
 See [Getting started](README.md#getting-started) in the README. In short:
 
 ```sh
-make db-up
-make migrate-up
-make dev
+make env               # .env with the local dev sign-in provider
+make frontend-install
+make dev               # http://localhost:5173 — no Google account needed
 ```
 
 ## Making changes
@@ -43,6 +43,8 @@ make dev
    ([testcontainers](https://golang.testcontainers.org/)), so Docker must be
    running. Without Docker, `make test-short` runs the unit tests only;
    `make test-db` reuses the local dev database instead of containers.
+   For UI changes, also run the browser tests: `make e2e` (once before:
+   `cd frontend && npx playwright install chromium`).
 5. If you changed SQL queries or the OpenAPI spec, regenerate code with
    `make generate` and commit the result.
 6. Open a pull request and fill in the template.

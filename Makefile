@@ -48,9 +48,25 @@ help: ## Show this help
 
 ##@ Development
 
+.PHONY: env
+env: ## Create .env from .env.example with a generated SESSION_SECRET
+	@test ! -f .env || (echo ".env already exists; not overwriting" && exit 1)
+	@sed "s|^SESSION_SECRET=$$|SESSION_SECRET=$$(openssl rand -base64 32)|" .env.example > .env
+	@echo "Created .env (dev sign-in provider, fresh SESSION_SECRET)"
+
+# With the local dev provider configured (the .env.example default), it is
+# started first and the backend waits for it: the backend needs the
+# provider's discovery document at startup.
+DEV_OIDC_URL := http://localhost:9090
+
 .PHONY: dev
-dev: db-up ## Start Postgres, backend and frontend dev server
+dev: db-up ## Start Postgres, (dev OIDC,) backend and frontend dev server
+	@test -f .env || (echo "No .env: run 'make env' first" && exit 1)
 	@trap 'kill 0' EXIT; \
+		if [ "$$OIDC_ISSUER_URL" = "$(DEV_OIDC_URL)" ]; then \
+			$(MAKE) --no-print-directory dev-oidc & \
+			until curl -sf $(DEV_OIDC_URL)/.well-known/openid-configuration >/dev/null; do sleep 0.3; done; \
+		fi; \
 		$(MAKE) --no-print-directory run-backend & \
 		$(MAKE) --no-print-directory run-frontend & \
 		wait
@@ -149,6 +165,18 @@ cover: ## Backend test coverage report (opens coverage.html)
 test-frontend:
 	cd $(FRONTEND_DIR) && npm test -- --run
 
+# End-to-end tests in a real browser (Playwright, Chromium) against the full
+# stack on separate ports, with the dev OIDC provider instead of Google and a
+# fresh database. First run: `cd frontend && npx playwright install chromium`.
+E2E_DB := calendar_e2e
+E2E_DATABASE_URL := postgres://calendar:calendar@localhost:5433/$(E2E_DB)?sslmode=disable
+
+.PHONY: e2e
+e2e: db-up build-backend build-devoidc ## Run end-to-end browser tests (Playwright)
+	docker compose -f $(DEV_COMPOSE) exec -T postgres psql -U calendar -d postgres -q \
+		-c "DROP DATABASE IF EXISTS $(E2E_DB) WITH (FORCE)" -c "CREATE DATABASE $(E2E_DB)"
+	cd $(FRONTEND_DIR) && E2E_DATABASE_URL="$(E2E_DATABASE_URL)" npx --no-install playwright test
+
 .PHONY: vuln
 vuln: ## Check Go dependencies for known vulnerabilities
 	cd $(BACKEND_DIR) && go run golang.org/x/vuln/cmd/govulncheck@latest ./...
@@ -168,6 +196,15 @@ build-backend:
 	cd $(BACKEND_DIR) && CGO_ENABLED=0 go build -trimpath \
 		-ldflags="-s -w -X main.version=$(VERSION)" \
 		-o ../$(BIN_DIR)/server ./cmd/server
+
+.PHONY: build-devoidc
+build-devoidc:
+	mkdir -p $(BIN_DIR)
+	cd $(BACKEND_DIR) && go build -o ../$(BIN_DIR)/devoidc ./cmd/devoidc
+
+.PHONY: dev-oidc
+dev-oidc: ## Run the local OIDC provider (sign in without Google; see README)
+	cd $(BACKEND_DIR) && go run ./cmd/devoidc
 
 .PHONY: docker-build
 docker-build: ## Build the production Docker image

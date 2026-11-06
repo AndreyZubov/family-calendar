@@ -48,16 +48,32 @@ Browser ──HTTPS──▶ Caddy ──▶ Go app (API + embedded React SPA) �
 - Node.js 22+
 - Docker with the Compose plugin
 - [golangci-lint](https://golangci-lint.run/welcome/install/) (for linting)
-- A Google OAuth client ([how to create one](https://developers.google.com/identity/openid-connect/openid-connect#appsetup))
-  with the redirect URI `http://localhost:5173/auth/callback`
 
 ### Run locally
 
 ```sh
-cp .env.example .env          # then fill in OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, SESSION_SECRET
-make db-up                    # start PostgreSQL
-make migrate-up               # apply database migrations
-make dev                      # start backend and frontend dev server
+make env                # create .env (dev sign-in, generated session secret)
+make frontend-install   # install frontend dependencies
+make dev                # start PostgreSQL, dev sign-in provider, backend and Vite
+```
+
+Open http://localhost:5173. Out of the box, sign-in goes to a **local
+development identity provider** (`backend/cmd/devoidc`): pick "Sign in as
+Alice" or type any name — no Google account needed. It is accepted only in
+development mode on localhost and is never part of the production image.
+
+To use real Google sign-in locally, create an OAuth client
+([how](https://developers.google.com/identity/openid-connect/openid-connect#appsetup))
+with the redirect URI `http://localhost:5173/auth/callback` and set the
+`OIDC_*` variables in `.env` as described there.
+
+Migrations run automatically when the backend starts.
+
+### Tests
+
+```sh
+make test           # backend (DB tests in Docker via testcontainers) + frontend
+make e2e            # end-to-end in Chromium (first: cd frontend && npx playwright install chromium)
 ```
 
 Run `make help` to see all available commands.

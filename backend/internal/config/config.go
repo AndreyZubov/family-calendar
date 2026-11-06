@@ -123,8 +123,8 @@ func Load(getenv func(string) string) (Config, error) {
 		errs = append(errs, errors.New("SHUTDOWN_TIMEOUT: must be a positive duration, e.g. 15s"))
 	}
 
-	if u, err := url.Parse(cfg.OIDCIssuerURL); err != nil || u.Scheme != "https" || u.Host == "" {
-		errs = append(errs, errors.New("OIDC_ISSUER_URL: must be an https URL"))
+	if err := checkIssuer(cfg.OIDCIssuerURL, cfg.Env); err != nil {
+		errs = append(errs, fmt.Errorf("OIDC_ISSUER_URL: %w", err))
 	}
 	if cfg.OIDCClientID == "" {
 		errs = append(errs, errors.New("OIDC_CLIENT_ID: required"))
@@ -167,6 +167,28 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, fmt.Errorf("invalid configuration:\n%w", err)
 	}
 	return cfg, nil
+}
+
+// checkIssuer requires https, except for a local development provider
+// (cmd/devoidc) on localhost while APP_ENV=development.
+func checkIssuer(raw, env string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return errors.New("must be an https URL")
+	}
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		h := u.Hostname()
+		local := h == "localhost" || h == "127.0.0.1" || h == "::1"
+		if env == EnvDevelopment && local {
+			return nil
+		}
+		return errors.New("must be https (plain http is allowed only for localhost in development)")
+	default:
+		return errors.New("must be an https URL")
+	}
 }
 
 func parseBaseURL(raw string) (*url.URL, error) {

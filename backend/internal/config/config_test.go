@@ -154,3 +154,28 @@ func TestLoadTrustedProxies(t *testing.T) {
 		t.Errorf("want TRUSTED_PROXIES error, got %v", err)
 	}
 }
+
+func TestLoadIssuerScheme(t *testing.T) {
+	cases := []struct {
+		env, issuer string
+		ok          bool
+	}{
+		{"development", "https://accounts.google.com", true},
+		{"development", "http://localhost:9090", true},
+		{"development", "http://127.0.0.1:9090", true},
+		{"development", "http://idp.example.com", false},
+		{"production", "http://localhost:9090", false}, // dev provider can never be used in production
+		{"production", "https://accounts.google.com", true},
+		{"development", "ftp://localhost", false},
+	}
+	for _, c := range cases {
+		over := map[string]string{"APP_ENV": c.env, "OIDC_ISSUER_URL": c.issuer}
+		if c.env == "production" {
+			over["APP_BASE_URL"] = "https://calendar.example.com"
+		}
+		_, err := Load(valid(over))
+		if (err == nil) != c.ok {
+			t.Errorf("%s %s: err = %v, want ok=%v", c.env, c.issuer, err, c.ok)
+		}
+	}
+}

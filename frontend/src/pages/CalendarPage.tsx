@@ -165,7 +165,10 @@ function EventRow({ ev }: { ev: CalendarEvent }) {
       <Link to={`/events/${ev.id}`} className="event-row">
         <span className="event-time">{formatEventTime(ev)}</span>
         <span className="event-title">{ev.title}</span>
-        <span className="avatars" aria-label={`${String(ev.participants.length)} participants`}>
+        <span
+          className="avatars"
+          aria-label={`${String(ev.participants.length)} participant${ev.participants.length === 1 ? '' : 's'}`}
+        >
           {ev.participants.map((p) => (
             <span key={p.userId} title={p.name}>
               <Avatar name={p.name} url={p.avatarUrl} size={24} />
