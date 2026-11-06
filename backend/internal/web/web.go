@@ -73,7 +73,9 @@ func Handler(fsys fs.FS) http.Handler {
 			default:
 				w.Header().Set("Cache-Control", "public, max-age=3600") // favicon etc.
 			}
-			http.ServeFileFS(w, r, fsys, name)
+			// name is path.Clean'ed, fsys is the embedded build (nothing
+			// outside it is reachable), and ServeFileFS rejects ".." itself.
+			http.ServeFileFS(w, r, fsys, name) //nolint:gosec // G703: see above; covered by TestHandler/path_traversal
 			return
 		}
 		if path.Ext(name) != "" {

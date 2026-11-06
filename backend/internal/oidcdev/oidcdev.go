@@ -212,7 +212,7 @@ func (s *Server) authorizeSubmit(w http.ResponseWriter, r *http.Request) {
 	q.Set("code", code)
 	q.Set("state", f.Get("state"))
 	u.RawQuery = q.Encode()
-	http.Redirect(w, r, u.String(), http.StatusFound)
+	http.Redirect(w, r, u.String(), http.StatusFound) //nolint:gosec // G710: redirect_uri was checked by checkAuthRequest (localhost only)
 }
 
 func (s *Server) token(w http.ResponseWriter, r *http.Request) {

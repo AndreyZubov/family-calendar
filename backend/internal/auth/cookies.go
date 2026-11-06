@@ -29,7 +29,9 @@ func (c Cookies) SessionName() string { return c.name("session") }
 func (c Cookies) FlowName() string { return c.name("auth_flow") }
 
 func (c Cookies) build(name, value string, maxAge time.Duration) *http.Cookie {
-	return &http.Cookie{
+	// Secure comes from config: always true over HTTPS (and required by the
+	// __Host- prefix); false only for plain-HTTP development on localhost.
+	return &http.Cookie{ //nolint:gosec // G124: Secure is set from config, HttpOnly and SameSite are always set
 		Name:     name,
 		Value:    value,
 		Path:     "/",
@@ -54,7 +56,7 @@ func (c Cookies) Flow(value string) *http.Cookie {
 
 // Clear returns a cookie that deletes the named cookie in the browser.
 func (c Cookies) Clear(name string) *http.Cookie {
-	ck := c.build(name, "", 0)
-	ck.MaxAge = -1 // Max-Age=0 in the header: delete now
+	ck := c.build(name, "", 0) //nolint:gosec // G124: same attributes as build(); this only deletes the cookie
+	ck.MaxAge = -1             // Max-Age=0 in the header: delete now
 	return ck
 }

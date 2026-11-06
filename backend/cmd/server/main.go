@@ -183,7 +183,8 @@ func healthcheck() int {
 		return 1
 	}
 	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get("http://127.0.0.1:" + port + "/healthz")
+	// Always loopback; only the port comes from the environment.
+	resp, err := client.Get("http://127.0.0.1:" + port + "/healthz") //nolint:gosec,noctx // G704 false positive: fixed host; one-shot CLI call with client timeout
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "healthcheck:", err)
 		return 1

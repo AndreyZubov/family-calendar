@@ -84,7 +84,7 @@ func newFakeIssuer(t *testing.T) *fakeIssuer {
 		}
 		idToken, err := jwt.Signed(signer).Claims(claims).Serialize()
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

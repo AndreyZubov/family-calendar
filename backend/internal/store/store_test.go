@@ -36,7 +36,7 @@ func inRolledBackTx(t *testing.T, s *Store, fn func(ctx context.Context, q *db.Q
 		t.Fatalf("begin: %v", err)
 	}
 	t.Cleanup(func() { _ = tx.Rollback(ctx) })
-	fn(ctx, s.Queries.WithTx(tx))
+	fn(ctx, s.WithTx(tx))
 }
 
 func mustUser(ctx context.Context, t *testing.T, q *db.Queries, sub string) db.User {

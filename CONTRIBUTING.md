@@ -74,6 +74,20 @@ Common types: `feat`, `fix`, `docs`, `refactor`, `test`, `build`, `ci`, `chore`.
 Mark breaking changes with `!` after the type (`feat!: ...`) or a
 `BREAKING CHANGE:` footer.
 
+## Continuous integration
+
+Every pull request runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
+
+| Job | Checks |
+|---|---|
+| Backend | golangci-lint, `go mod tidy` is clean, sqlc code is up to date, tests with the race detector (Postgres via testcontainers), coverage, govulncheck |
+| Frontend | generated API types match the OpenAPI spec, ESLint, TypeScript, Prettier, unit tests, build, `npm audit` (high+) |
+| End-to-end | Playwright in Chromium against the production build; any browser console error (including CSP violations) fails |
+| Docker image | build, smoke test of the image, smoke test of the production Compose stack |
+| Workflow lint | actionlint |
+
+`make lint` and `make test` (plus `make e2e` for UI changes) run the same checks locally.
+
 ## Pull request review
 
 - CI must pass before a pull request can be merged.

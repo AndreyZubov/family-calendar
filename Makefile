@@ -35,6 +35,11 @@ MIGRATE := go run ./cmd/migrate
 SQLC_VERSION := v1.31.1
 SQLC := go run github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
 
+# Same pinned version as in CI (.github/workflows/ci.yml).
+GOLANGCI_LINT_VERSION := v2.15.0
+GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+ACTIONLINT := go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
 IMAGE   ?= family-calendar
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
@@ -128,11 +133,15 @@ migrate-create: ## Create a new SQL migration: make migrate-create name=add_even
 ##@ Quality
 
 .PHONY: lint
-lint: lint-backend lint-frontend ## Run all linters
+lint: lint-backend lint-frontend lint-workflows ## Run all linters
 
 .PHONY: lint-backend
 lint-backend:
-	cd $(BACKEND_DIR) && golangci-lint run ./...
+	cd $(BACKEND_DIR) && $(GOLANGCI_LINT) run ./...
+
+.PHONY: lint-workflows
+lint-workflows: ## Check GitHub Actions workflows (actionlint)
+	$(ACTIONLINT)
 
 .PHONY: lint-frontend
 lint-frontend:
@@ -185,9 +194,11 @@ e2e-binary: db-up build build-devoidc ## Run end-to-end tests against the binary
 		-c "DROP DATABASE IF EXISTS $(E2E_DB) WITH (FORCE)" -c "CREATE DATABASE $(E2E_DB)"
 	cd $(FRONTEND_DIR) && E2E_TARGET=binary E2E_DATABASE_URL="$(E2E_DATABASE_URL)" npx --no-install playwright test
 
+GOVULNCHECK := go run golang.org/x/vuln/cmd/govulncheck@v1.9.0
+
 .PHONY: vuln
 vuln: ## Check Go dependencies for known vulnerabilities
-	cd $(BACKEND_DIR) && go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	cd $(BACKEND_DIR) && $(GOVULNCHECK) ./...
 
 ##@ Build
 

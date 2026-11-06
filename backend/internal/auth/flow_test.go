@@ -2,6 +2,7 @@ package auth
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -60,7 +61,7 @@ func TestFlowOpenRejects(t *testing.T) {
 		"too short": func() error { _, err := s.Open("AAAA"); return err },
 	}
 	for name, open := range cases {
-		if err := open(); err != ErrInvalidFlow {
+		if err := open(); !errors.Is(err, ErrInvalidFlow) {
 			t.Errorf("%s: err = %v, want ErrInvalidFlow", name, err)
 		}
 	}

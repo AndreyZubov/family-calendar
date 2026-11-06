@@ -134,7 +134,7 @@ func setup() error {
 
 	// Several test packages run in parallel processes against the same
 	// server; the lock makes exactly one of them build the template.
-	lockID := int64(binary.BigEndian.Uint64([]byte(sum[:8])))
+	lockID := int64(binary.BigEndian.Uint64([]byte(sum[:8]))) //nolint:gosec // G115: intentional bit reinterpretation; any int64 is a valid lock ID
 	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1)", lockID); err != nil {
 		return fmt.Errorf("lock: %w", err)
 	}

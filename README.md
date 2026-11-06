@@ -47,7 +47,9 @@ Browser ──HTTPS──▶ Caddy ──▶ Go app (API + embedded React SPA) �
 - Go 1.27+
 - Node.js 22+
 - Docker with the Compose plugin
-- [golangci-lint](https://golangci-lint.run/welcome/install/) (for linting)
+
+Linters and code generators run at pinned versions via `go run`/`npx`; nothing
+else needs to be installed.
 
 ### Run locally
 

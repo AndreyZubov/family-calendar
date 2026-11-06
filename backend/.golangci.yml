@@ -1,0 +1,44 @@
+# golangci-lint v2 configuration. Run: make lint-backend
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  # "standard" = errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    - bodyclose # HTTP response bodies are closed
+    - errorlint # errors compared with errors.Is/As, wrapped with %w
+    - gocritic # assorted bug and style checks
+    - gosec # security: weak crypto, SQL built from strings, file permissions…
+    - misspell
+    - noctx # HTTP requests carry a context
+    - nolintlint # //nolint directives are specific and explained
+    - sqlclosecheck # rows are closed
+    - unconvert # needless conversions
+    - usestdlibvars # http.MethodGet instead of "GET", etc.
+  settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    gosec:
+      excludes:
+        - G104 # unhandled errors: covered by errcheck with better exclusions
+  exclusions:
+    generated: lax # sqlc output (internal/store/db) is not linted
+    presets:
+      - std-error-handling # e.g. ignoring errors from Close() in defers
+    rules:
+      # Tests: fixed fake secrets and plain HTTP to httptest servers are fine.
+      - path: _test\.go
+        linters: [gosec, noctx, bodyclose]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/AndreyZubov/family-calendar

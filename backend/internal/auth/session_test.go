@@ -3,6 +3,7 @@ package auth
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -122,7 +123,7 @@ func TestSessionSlidingExpiration(t *testing.T) {
 
 	// Idle longer than TTL: gone.
 	c.advance(25 * time.Hour)
-	if _, err := s.Lookup(ctx, token); err != ErrNoSession {
+	if _, err := s.Lookup(ctx, token); !errors.Is(err, ErrNoSession) {
 		t.Errorf("idle session: err = %v, want ErrNoSession", err)
 	}
 }
@@ -135,7 +136,7 @@ func TestSessionDestroy(t *testing.T) {
 	if err := s.Destroy(ctx, token); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Lookup(ctx, token); err != ErrNoSession {
+	if _, err := s.Lookup(ctx, token); !errors.Is(err, ErrNoSession) {
 		t.Errorf("after Destroy: err = %v", err)
 	}
 	if err := s.Destroy(ctx, "garbage"); err != nil {
@@ -146,7 +147,7 @@ func TestSessionDestroy(t *testing.T) {
 func TestSessionLookupRejectsMalformedTokens(t *testing.T) {
 	s, _, _ := newTestSessions()
 	for _, tok := range []string{"", "short", "!!!!", randomToken() + "x"} {
-		if _, err := s.Lookup(context.Background(), tok); err != ErrNoSession {
+		if _, err := s.Lookup(context.Background(), tok); !errors.Is(err, ErrNoSession) {
 			t.Errorf("Lookup(%q) = %v", tok, err)
 		}
 	}
