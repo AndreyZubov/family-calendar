@@ -224,6 +224,10 @@ dev-oidc: ## Run the local OIDC provider (sign in without Google; see README)
 docker-build: ## Build the production Docker image
 	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE):$(VERSION) -t $(IMAGE):dev .
 
+.PHONY: compose-test
+compose-test: docker-build ## Smoke-test the production Compose stack locally (Caddy HTTPS + app + Postgres)
+	scripts/compose-smoke.sh $(VERSION)
+
 .PHONY: docker-test
 docker-test: docker-build ## Build the image and smoke-test it (locked down, next to a throwaway Postgres)
 	scripts/docker-smoke.sh $(IMAGE):$(VERSION)

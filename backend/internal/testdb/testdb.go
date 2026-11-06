@@ -42,7 +42,7 @@ import (
 
 // Image is the Postgres image for test containers; keep it in sync with
 // deploy/docker-compose*.yml.
-const Image = "postgres:17-alpine"
+const Image = "postgres:17.11-alpine"
 
 var (
 	once     sync.Once

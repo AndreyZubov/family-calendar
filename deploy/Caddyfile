@@ -1,0 +1,29 @@
+# Caddy: HTTPS in front of the app.
+#
+# Certificates are obtained and renewed automatically from Let's Encrypt for
+# {$DOMAIN} (its DNS A record must point to this server, ports 80 and 443
+# must be open). Plain HTTP is redirected to HTTPS.
+{
+	email {$ACME_EMAIL}
+	# Admin API off: nothing needs to reconfigure Caddy at runtime.
+	admin off
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Security headers (CSP, HSTS, ...) are set by the app itself, so they
+	# are identical in every environment. Here only hide the server banner.
+	header -Server
+
+	# Caddy replaces any client-supplied X-Forwarded-For with the real client
+	# address (it trusts no upstream proxies), and the app trusts this header
+	# only from Caddy's fixed IP (TRUSTED_PROXIES).
+	reverse_proxy app:8080
+
+	log {
+		output stdout
+		format json
+		level WARN # the app logs every request already; Caddy logs problems
+	}
+}

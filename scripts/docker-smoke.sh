@@ -30,7 +30,7 @@ echo "Image: $IMAGE"
 docker network create "$NET" >/dev/null
 docker run -d --name "$DB" --network "$NET" \
   -e POSTGRES_USER=calendar -e POSTGRES_PASSWORD=calendar -e POSTGRES_DB=calendar \
-  postgres:17-alpine >/dev/null
+  postgres:17.11-alpine >/dev/null
 for _ in $(seq 1 60); do
   docker exec "$DB" pg_isready -U calendar -d calendar >/dev/null 2>&1 && break
   sleep 1
