@@ -1,13 +1,19 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 import { createFamily, signIn } from './helpers'
 
-test('an invited relative joins and shares an event', async ({ browser }) => {
+test('an invited relative joins and shares an event', async ({ browser, browserErrors }) => {
   // Two people, two separate browsers (separate cookies).
   const bobCtx = await browser.newContext()
   const carolCtx = await browser.newContext()
   const bob = await bobCtx.newPage()
   const carol = await carolCtx.newPage()
+  for (const p of [bob, carol]) {
+    p.on('pageerror', (err) => browserErrors.push(`pageerror: ${err.message}`))
+    p.on('console', (msg) => {
+      if (msg.type() === 'error') browserErrors.push(`console: ${msg.text()}`)
+    })
+  }
 
   // Bob creates a family and an invite link.
   await signIn(bob, 'Bob Smith')

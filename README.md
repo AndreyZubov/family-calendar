@@ -78,10 +78,25 @@ make e2e            # end-to-end in Chromium (first: cd frontend && npx playwrig
 
 Run `make help` to see all available commands.
 
+## Docker image
+
+One small image (~5 MB compressed): a static Go binary with the React app
+embedded, on [distroless](https://github.com/GoogleContainerTools/distroless)
+(no shell, no package manager), running as a non-root user.
+
+```sh
+make docker-build   # build family-calendar:<version>
+make docker-test    # build + smoke test (locked down, next to a throwaway Postgres)
+```
+
+The container serves the API and the UI on port 8080 and applies database
+migrations on startup. It is configured only through environment variables —
+see [`.env.example`](.env.example).
+
 ## Deployment
 
-Deployment instructions will be added in [`deploy/`](deploy/) once the
-production setup is in place.
+Production setup (Docker Compose with Caddy for HTTPS) is described in
+[`deploy/`](deploy/).
 
 ## Contributing
 

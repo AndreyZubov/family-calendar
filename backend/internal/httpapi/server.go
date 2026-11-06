@@ -32,6 +32,8 @@ type Deps struct {
 	BaseURL *url.URL
 	// TrustedProxies whose X-Forwarded-For is believed (Caddy).
 	TrustedProxies []netip.Prefix
+	// Web serves the frontend for every path not handled above (nil: none).
+	Web http.Handler
 }
 
 // API is the application's HTTP handler.
@@ -132,6 +134,11 @@ func (a *API) routes(mux *http.ServeMux) {
 	apiRoute("DELETE /api/events/{id}", a.requireFamily(a.handleDeleteEvent))
 	apiRoute("POST /api/events/{id}/participants", a.requireFamily(a.handleAddParticipant))
 	apiRoute("DELETE /api/events/{id}/participants/{userId}", a.requireFamily(a.handleRemoveParticipant))
+
+	// Everything else is the single-page app (production build).
+	if a.deps.Web != nil {
+		mux.Handle("/", a.deps.Web)
+	}
 
 	// Unknown API paths get a JSON 404 instead of the default text one.
 	// Registered directly: it is a fallback, not part of the API contract.

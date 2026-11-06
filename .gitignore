@@ -25,6 +25,11 @@ coverage.*
 go.work
 go.work.sum
 
+# Frontend build copied into the Go binary at build time; only the
+# placeholder is committed (go:embed needs the directory to exist).
+backend/internal/web/dist/*
+!backend/internal/web/dist/.gitkeep
+
 # ---------------------------------------------------------------
 # Node / frontend
 # ---------------------------------------------------------------

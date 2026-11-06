@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,12 +23,18 @@ import (
 	"github.com/AndreyZubov/family-calendar/backend/internal/config"
 	"github.com/AndreyZubov/family-calendar/backend/internal/httpapi"
 	"github.com/AndreyZubov/family-calendar/backend/internal/store"
+	"github.com/AndreyZubov/family-calendar/backend/internal/web"
 )
 
 // version is set at build time: -ldflags "-X main.version=v1.2.3".
 var version = "dev"
 
 func main() {
+	// `server healthcheck` is the Docker HEALTHCHECK: the distroless image
+	// has no shell or curl, so the binary checks itself.
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		os.Exit(healthcheck())
+	}
 	if err := run(); err != nil {
 		// The logger may not exist yet (config errors), so use stderr.
 		fmt.Fprintln(os.Stderr, "server:", err)
@@ -71,6 +78,7 @@ func run() error {
 		Log: log, DB: db, Version: version, Auth: authDeps,
 		Calendar: calendar.NewService(db),
 		BaseURL:  cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
+		Web: web.Handler(web.Dist()),
 	})
 	if err != nil {
 		return err
@@ -159,6 +167,33 @@ func cleanupSessions(ctx context.Context, s *auth.Sessions, log *slog.Logger) {
 			}
 		}
 	}
+}
+
+// healthcheck asks the running server's liveness endpoint and returns the
+// process exit code: 0 healthy, 1 not. It reads only HTTP_ADDR, so it works
+// even where the full configuration would not load.
+func healthcheck() int {
+	addr := os.Getenv("HTTP_ADDR")
+	if addr == "" {
+		addr = ":8080"
+	}
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "healthcheck: bad HTTP_ADDR:", err)
+		return 1
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:" + port + "/healthz")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "healthcheck:", err)
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintln(os.Stderr, "healthcheck: status", resp.StatusCode)
+		return 1
+	}
+	return 0
 }
 
 // newLogger returns JSON logs in production (machine-readable, one object

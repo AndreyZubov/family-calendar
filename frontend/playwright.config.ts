@@ -9,7 +9,12 @@ import { defineConfig, devices } from '@playwright/test'
 //                              ↘ dev OIDC provider :9091 (instead of Google)
 //
 // Run with `make e2e`: it builds the Go binaries and creates a fresh database.
-const ports = { app: 5174, backend: 8081, oidc: 9091 }
+//
+// E2E_TARGET=binary (`make e2e-binary`) skips Vite: the Go server serves the
+// production build embedded in it, as in the Docker image — with the real
+// Content-Security-Policy and caching headers.
+const binary = process.env.E2E_TARGET === 'binary'
+const ports = { app: binary ? 8081 : 5174, backend: 8081, oidc: 9091 }
 const databaseURL = process.env.E2E_DATABASE_URL
 if (!databaseURL) throw new Error('E2E_DATABASE_URL is not set; run the tests with `make e2e`')
 
@@ -55,11 +60,15 @@ export default defineConfig({
       reuseExistingServer: false,
       stdout: 'pipe',
     },
-    {
-      command: `npx --no-install vite --port ${String(ports.app)} --strictPort`,
-      url: `http://localhost:${String(ports.app)}`,
-      env: { BACKEND_URL: `http://localhost:${String(ports.backend)}` },
-      reuseExistingServer: false,
-    },
+    ...(binary
+      ? []
+      : [
+          {
+            command: `npx --no-install vite --port ${String(ports.app)} --strictPort`,
+            url: `http://localhost:${String(ports.app)}`,
+            env: { BACKEND_URL: `http://localhost:${String(ports.backend)}` },
+            reuseExistingServer: false,
+          },
+        ]),
   ],
 })

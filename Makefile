@@ -177,6 +177,14 @@ e2e: db-up build-backend build-devoidc ## Run end-to-end browser tests (Playwrig
 		-c "DROP DATABASE IF EXISTS $(E2E_DB) WITH (FORCE)" -c "CREATE DATABASE $(E2E_DB)"
 	cd $(FRONTEND_DIR) && E2E_DATABASE_URL="$(E2E_DATABASE_URL)" npx --no-install playwright test
 
+# Same scenarios against the production build served by the Go binary
+# (no Vite): checks the embedded app, CSP and caching as in the Docker image.
+.PHONY: e2e-binary
+e2e-binary: db-up build build-devoidc ## Run end-to-end tests against the binary with the embedded frontend
+	docker compose -f $(DEV_COMPOSE) exec -T postgres psql -U calendar -d postgres -q \
+		-c "DROP DATABASE IF EXISTS $(E2E_DB) WITH (FORCE)" -c "CREATE DATABASE $(E2E_DB)"
+	cd $(FRONTEND_DIR) && E2E_TARGET=binary E2E_DATABASE_URL="$(E2E_DATABASE_URL)" npx --no-install playwright test
+
 .PHONY: vuln
 vuln: ## Check Go dependencies for known vulnerabilities
 	cd $(BACKEND_DIR) && go run golang.org/x/vuln/cmd/govulncheck@latest ./...
@@ -184,11 +192,17 @@ vuln: ## Check Go dependencies for known vulnerabilities
 ##@ Build
 
 .PHONY: build
-build: build-frontend build-backend ## Build frontend and backend binary
+build: build-frontend embed-frontend build-backend ## Build the frontend and a server binary that embeds it
 
 .PHONY: build-frontend
 build-frontend:
 	cd $(FRONTEND_DIR) && npm ci && npm run build
+
+# Copy the frontend build where go:embed picks it up (internal/web/dist).
+.PHONY: embed-frontend
+embed-frontend:
+	find $(BACKEND_DIR)/internal/web/dist -mindepth 1 ! -name .gitkeep -delete
+	cp -R $(FRONTEND_DIR)/dist/. $(BACKEND_DIR)/internal/web/dist/
 
 .PHONY: build-backend
 build-backend:
@@ -208,8 +222,13 @@ dev-oidc: ## Run the local OIDC provider (sign in without Google; see README)
 
 .PHONY: docker-build
 docker-build: ## Build the production Docker image
-	docker build -t $(IMAGE):$(VERSION) .
+	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE):$(VERSION) -t $(IMAGE):dev .
+
+.PHONY: docker-test
+docker-test: docker-build ## Build the image and smoke-test it (locked down, next to a throwaway Postgres)
+	scripts/docker-smoke.sh $(IMAGE):$(VERSION)
 
 .PHONY: clean
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR) $(FRONTEND_DIR)/dist
+	find $(BACKEND_DIR)/internal/web/dist -mindepth 1 ! -name .gitkeep -delete
