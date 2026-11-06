@@ -66,7 +66,14 @@ func run() error {
 	}
 	go cleanupSessions(ctx, authDeps.Sessions, log)
 
-	api := httpapi.New(httpapi.Deps{Log: log, DB: db, Version: version, Auth: authDeps})
+	api, err := httpapi.New(httpapi.Deps{
+		Log: log, DB: db, Version: version, Auth: authDeps,
+		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
+	})
+	if err != nil {
+		return err
+	}
+	go api.RunBackground(ctx)
 	srv := httpapi.NewServer(cfg.HTTPAddr, api, log)
 
 	serveErr := make(chan error, 1)

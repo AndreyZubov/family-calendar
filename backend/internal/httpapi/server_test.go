@@ -20,7 +20,11 @@ func newTestAPI(t *testing.T, db Pinger) (*API, *bytes.Buffer) {
 	t.Helper()
 	var logs bytes.Buffer
 	log := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	return New(Deps{Log: log, DB: db, Version: "test"}), &logs
+	api, err := New(Deps{Log: log, DB: db, Version: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return api, &logs
 }
 
 func do(h http.Handler, method, path string, hdr map[string]string) *httptest.ResponseRecorder {

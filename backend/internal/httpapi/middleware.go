@@ -100,7 +100,7 @@ func accessLog(base *slog.Logger) Middleware {
 				slog.Int("status", rec.status),
 				slog.Int64("bytes", rec.bytes),
 				slog.Float64("duration_ms", float64(time.Since(start).Microseconds())/1000),
-				slog.String("remote_addr", r.RemoteAddr),
+				slog.String("client_ip", ClientIPFrom(ctx).String()),
 			)
 		})
 	}

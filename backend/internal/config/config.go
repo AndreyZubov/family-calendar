@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -51,6 +52,11 @@ type Config struct {
 	SessionSecret []byte
 	// SessionTTL is how long a session lives without activity.
 	SessionTTL time.Duration
+
+	// TrustedProxies are networks of reverse proxies (Caddy) whose
+	// X-Forwarded-For header is believed. Empty: the header is ignored and
+	// the TCP peer address is the client IP.
+	TrustedProxies []netip.Prefix
 }
 
 // OIDCRedirectURL is where the provider sends the browser after sign-in.
@@ -137,6 +143,24 @@ func Load(getenv func(string) string) (Config, error) {
 	cfg.SessionTTL, err = time.ParseDuration(get("SESSION_TTL", "720h"))
 	if err != nil || cfg.SessionTTL < time.Hour {
 		errs = append(errs, errors.New("SESSION_TTL: must be a duration of at least 1h, e.g. 720h"))
+	}
+
+	for _, raw := range strings.Split(get("TRUSTED_PROXIES", ""), ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		p, err := netip.ParsePrefix(raw)
+		if err != nil {
+			// A bare IP means a single host.
+			addr, aerr := netip.ParseAddr(raw)
+			if aerr != nil {
+				errs = append(errs, fmt.Errorf("TRUSTED_PROXIES: %q is not an IP or CIDR", raw))
+				continue
+			}
+			p = netip.PrefixFrom(addr, addr.BitLen())
+		}
+		cfg.TrustedProxies = append(cfg.TrustedProxies, p.Masked())
 	}
 
 	if err := errors.Join(errs...); err != nil {

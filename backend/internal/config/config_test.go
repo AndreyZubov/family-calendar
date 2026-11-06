@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -131,5 +132,25 @@ func TestLoadRejectsWeakSessionSecret(t *testing.T) {
 	_, err := Load(valid(map[string]string{"SESSION_SECRET": "AAAAAAAAAAAAAAAAAAAAAA=="}))
 	if err == nil || !strings.Contains(err.Error(), "SESSION_SECRET") {
 		t.Errorf("want SESSION_SECRET error, got %v", err)
+	}
+}
+
+func TestLoadTrustedProxies(t *testing.T) {
+	cfg, err := Load(valid(map[string]string{"TRUSTED_PROXIES": " 172.16.0.0/12, 10.0.0.5 ,::1"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := fmt.Sprint(cfg.TrustedProxies)
+	if got != "[172.16.0.0/12 10.0.0.5/32 ::1/128]" {
+		t.Errorf("TrustedProxies = %s", got)
+	}
+
+	cfg, _ = Load(valid(nil))
+	if len(cfg.TrustedProxies) != 0 {
+		t.Errorf("default must trust no proxies, got %v", cfg.TrustedProxies)
+	}
+
+	if _, err := Load(valid(map[string]string{"TRUSTED_PROXIES": "caddy"})); err == nil || !strings.Contains(err.Error(), "TRUSTED_PROXIES") {
+		t.Errorf("want TRUSTED_PROXIES error, got %v", err)
 	}
 }

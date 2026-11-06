@@ -5,6 +5,8 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"net/netip"
+	"net/url"
 	"sync/atomic"
 	"time"
 )
@@ -20,6 +22,12 @@ type Deps struct {
 	DB      Pinger
 	Version string
 	Auth    AuthDeps
+
+	// BaseURL is the public origin. Used as the trusted origin for CSRF
+	// checks; HTTPS enables HSTS.
+	BaseURL *url.URL
+	// TrustedProxies whose X-Forwarded-For is believed (Caddy).
+	TrustedProxies []netip.Prefix
 }
 
 // API is the application's HTTP handler.
@@ -27,40 +35,77 @@ type API struct {
 	deps    Deps
 	ready   atomic.Bool
 	handler http.Handler
+
+	authLimiter *ipLimiter
+	apiLimiter  *ipLimiter
 }
 
 // New builds the router and middleware stack. The API starts not ready;
 // call SetReady(true) once startup (migrations) is complete.
-func New(deps Deps) *API {
-	a := &API{deps: deps}
+func New(deps Deps) (*API, error) {
+	a := &API{
+		deps:        deps,
+		authLimiter: newIPLimiter(AuthRateLimit),
+		apiLimiter:  newIPLimiter(APIRateLimit),
+	}
+
+	csrf, err := csrfProtection(deps.BaseURL)
+	if err != nil {
+		return nil, err
+	}
 
 	mux := http.NewServeMux()
 	a.routes(mux)
 
-	// Order matters: request ID first so every log line has it; access log
-	// outside recover so it records the 500 a panic turns into.
+	// Order matters (outermost first):
+	//   requestID   — every later log line carries the ID
+	//   clientIP    — real IP for logs and rate limits
+	//   accessLog   — outside recover, so it records the 500 a panic becomes
+	//   recover     — catches panics from everything below
+	//   headers     — set before any handler writes, including error responses
+	//   limitBody   — before anything reads the body
+	//   csrf        — reject cross-site writes before they reach handlers
 	a.handler = chain(mux,
 		requestID,
+		clientIP(deps.TrustedProxies),
 		accessLog(deps.Log),
 		recoverPanic,
+		securityHeaders(deps.BaseURL != nil && deps.BaseURL.Scheme == "https"),
+		limitBody,
+		csrf,
 	)
-	return a
+	return a, nil
+}
+
+// RunBackground runs periodic housekeeping (rate limiter cleanup) until ctx
+// is done. Call it in a goroutine.
+func (a *API) RunBackground(ctx context.Context) {
+	go a.authLimiter.cleanup(ctx)
+	a.apiLimiter.cleanup(ctx)
 }
 
 func (a *API) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /healthz", a.handleHealthz)
 	mux.HandleFunc("GET /readyz", a.handleReadyz)
 
-	// Sign-in (browser navigations, not fetch calls).
-	mux.HandleFunc("GET /auth/login", a.handleLogin)
-	mux.HandleFunc("GET /auth/callback", a.handleCallback)
-	mux.HandleFunc("POST /auth/logout", a.handleLogout)
+	// Health checks are not rate limited: Docker and monitoring poll them.
+
+	// Sign-in (browser navigations, not fetch calls). Strict rate limit.
+	authRoute := func(pattern string, h http.HandlerFunc) {
+		mux.Handle(pattern, a.authLimiter.middleware(h))
+	}
+	authRoute("GET /auth/login", a.handleLogin)
+	authRoute("GET /auth/callback", a.handleCallback)
+	authRoute("POST /auth/logout", a.handleLogout)
 
 	// API: everything below requires a signed-in user.
-	mux.HandleFunc("GET /api/me", a.requireUser(a.handleMe))
+	apiRoute := func(pattern string, h http.HandlerFunc) {
+		mux.Handle(pattern, a.apiLimiter.middleware(h))
+	}
+	apiRoute("GET /api/me", a.requireUser(a.handleMe))
 
 	// Unknown API paths get a JSON 404 instead of the default text one.
-	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+	apiRoute("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusNotFound, "not_found", "endpoint not found")
 	})
 }

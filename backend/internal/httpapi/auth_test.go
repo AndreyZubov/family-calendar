@@ -150,13 +150,16 @@ func newAuthHarness(t *testing.T, secure bool) *authHarness {
 	}}
 	cookies := auth.Cookies{Secure: secure}
 	var logs bytes.Buffer
-	api := New(Deps{
+	api, err := New(Deps{
 		Log: slog.New(slog.NewJSONHandler(&logs, nil)), DB: fakeDB{}, Version: "test",
 		Auth: AuthDeps{
 			Provider: p, Sessions: auth.NewSessions(mdb, 24*time.Hour), Flow: flow,
 			Cookies: cookies, Users: mdb,
 		},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	return &authHarness{api: api, provider: p, db: mdb, cookies: cookies, logs: &logs}
 }
 
