@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"sync/atomic"
 	"time"
+
+	"github.com/AndreyZubov/family-calendar/backend/internal/calendar"
 )
 
 // Pinger checks that a dependency (the database) is reachable.
@@ -22,6 +24,8 @@ type Deps struct {
 	DB      Pinger
 	Version string
 	Auth    AuthDeps
+	// Calendar implements families, invites and events.
+	Calendar *calendar.Service
 
 	// BaseURL is the public origin. Used as the trusted origin for CSRF
 	// checks; HTTPS enables HSTS.
@@ -38,6 +42,10 @@ type API struct {
 
 	authLimiter *ipLimiter
 	apiLimiter  *ipLimiter
+
+	// patterns lists registered "METHOD /path" routes; a test checks them
+	// against the OpenAPI spec so the two cannot drift apart.
+	patterns []string
 }
 
 // New builds the router and middleware stack. The API starts not ready;
@@ -85,14 +93,18 @@ func (a *API) RunBackground(ctx context.Context) {
 }
 
 func (a *API) routes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /healthz", a.handleHealthz)
-	mux.HandleFunc("GET /readyz", a.handleReadyz)
+	handle := func(pattern string, h http.Handler) {
+		a.patterns = append(a.patterns, pattern)
+		mux.Handle(pattern, h)
+	}
 
 	// Health checks are not rate limited: Docker and monitoring poll them.
+	handle("GET /healthz", http.HandlerFunc(a.handleHealthz))
+	handle("GET /readyz", http.HandlerFunc(a.handleReadyz))
 
 	// Sign-in (browser navigations, not fetch calls). Strict rate limit.
 	authRoute := func(pattern string, h http.HandlerFunc) {
-		mux.Handle(pattern, a.authLimiter.middleware(h))
+		handle(pattern, a.authLimiter.middleware(h))
 	}
 	authRoute("GET /auth/login", a.handleLogin)
 	authRoute("GET /auth/callback", a.handleCallback)
@@ -100,14 +112,32 @@ func (a *API) routes(mux *http.ServeMux) {
 
 	// API: everything below requires a signed-in user.
 	apiRoute := func(pattern string, h http.HandlerFunc) {
-		mux.Handle(pattern, a.apiLimiter.middleware(h))
+		handle(pattern, a.apiLimiter.middleware(h))
 	}
 	apiRoute("GET /api/me", a.requireUser(a.handleMe))
 
+	// Family: creating one or accepting an invite only needs a signed-in
+	// user; everything else needs a family (403 no_family otherwise).
+	apiRoute("POST /api/family", a.requireUser(a.handleCreateFamily))
+	apiRoute("POST /api/invites/accept", a.requireUser(a.handleAcceptInvite))
+	apiRoute("GET /api/family/members", a.requireFamily(a.handleListMembers))
+	apiRoute("DELETE /api/family/members/{userId}", a.requireFamily(a.handleRemoveMember))
+	apiRoute("POST /api/family/invites", a.requireFamily(a.handleCreateInvite))
+
+	// Events of the user's family.
+	apiRoute("GET /api/events", a.requireFamily(a.handleListEvents))
+	apiRoute("POST /api/events", a.requireFamily(a.handleCreateEvent))
+	apiRoute("GET /api/events/{id}", a.requireFamily(a.handleGetEvent))
+	apiRoute("PUT /api/events/{id}", a.requireFamily(a.handleUpdateEvent))
+	apiRoute("DELETE /api/events/{id}", a.requireFamily(a.handleDeleteEvent))
+	apiRoute("POST /api/events/{id}/participants", a.requireFamily(a.handleAddParticipant))
+	apiRoute("DELETE /api/events/{id}/participants/{userId}", a.requireFamily(a.handleRemoveParticipant))
+
 	// Unknown API paths get a JSON 404 instead of the default text one.
-	apiRoute("/api/", func(w http.ResponseWriter, r *http.Request) {
+	// Registered directly: it is a fallback, not part of the API contract.
+	mux.Handle("/api/", a.apiLimiter.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusNotFound, "not_found", "endpoint not found")
-	})
+	})))
 }
 
 // ServeHTTP implements http.Handler.

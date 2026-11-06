@@ -1,0 +1,601 @@
+openapi: 3.1.0
+info:
+  title: Family Calendar API
+  version: 0.1.0
+  description: |
+    API of the Family Calendar backend. The React frontend is its only client.
+
+    **Authentication.** Sign-in is a browser flow (`/auth/login` →
+    provider → `/auth/callback`) that ends with an `HttpOnly` session cookie.
+    All `/api/*` endpoints require that cookie; without it they return
+    `401 unauthenticated`.
+
+    **CSRF.** State-changing requests (POST, PUT, DELETE) from other origins
+    are rejected with `403 cross_origin`. Request bodies must be
+    `application/json`.
+
+    **Errors.** Every error has the same shape:
+    `{"error": {"code": "...", "message": "...", "fields": {...}}}`.
+    `code` is stable and meant for the client; `fields` is present only for
+    `validation_failed`.
+
+    **Rate limits.** Per client IP: `/auth/*` 10 requests burst, then one per
+    3 s; `/api/*` 60 burst, then ~20/s. Exceeding them gives
+    `429 rate_limited` with a `Retry-After` header.
+  license:
+    name: MIT
+    identifier: MIT
+
+servers:
+  - url: /
+
+tags:
+  - name: auth
+    description: Browser sign-in flow (navigations, not fetch calls)
+  - name: me
+  - name: family
+  - name: events
+  - name: health
+
+security:
+  - session: []
+
+paths:
+  /auth/login:
+    get:
+      tags: [auth]
+      operationId: login
+      summary: Start sign-in
+      description: Redirects the browser to the identity provider (OIDC Authorization Code Flow with PKCE).
+      security: []
+      parameters:
+        - name: return_to
+          in: query
+          description: Local path to open after sign-in. Anything that is not a local path becomes `/`.
+          schema: { type: string, example: /calendar }
+      responses:
+        "302":
+          description: Redirect to the identity provider. Sets a short-lived encrypted `auth_flow` cookie.
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /auth/callback:
+    get:
+      tags: [auth]
+      operationId: authCallback
+      summary: Finish sign-in
+      description: |
+        The identity provider redirects here. On success the browser is sent
+        to `return_to` with a new session cookie. On failure it is sent to
+        `/login?error=<code>` where code is one of `flow_expired`,
+        `provider_error`, `state_mismatch`, `missing_code`, `exchange_failed`,
+        `email_not_verified`, `internal`.
+      security: []
+      parameters:
+        - { name: code, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: error, in: query, schema: { type: string } }
+      responses:
+        "302":
+          description: Redirect to the app (success) or to `/login?error=...` (failure).
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Sign out
+      description: Deletes the session on the server and the cookie in the browser. Succeeds without a session too.
+      security: []
+      responses:
+        "204": { description: Signed out. }
+        "403": { $ref: "#/components/responses/CrossOrigin" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/me:
+    get:
+      tags: [me]
+      operationId: getMe
+      summary: Current user and family
+      description: The frontend calls this on startup to choose between the login page, family setup and the calendar.
+      responses:
+        "200":
+          description: Signed in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/family:
+    post:
+      tags: [family]
+      operationId: createFamily
+      summary: Create a family
+      description: Creates a family with the current user as owner. A user can belong to one family.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100, example: The Ivanovs }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Family" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/CrossOrigin" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /api/family/members:
+    get:
+      tags: [family]
+      operationId: listFamilyMembers
+      summary: List family members
+      responses:
+        "200":
+          description: Members, oldest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/FamilyMember" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NoFamily" }
+
+  /api/family/members/{userId}:
+    delete:
+      tags: [family]
+      operationId: removeFamilyMember
+      summary: Remove a member or leave the family
+      description: |
+        A member may remove themselves (leave). Only the owner may remove
+        others. The owner cannot leave (`409 owner_cannot_leave`). The removed
+        member is also removed from all events.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "204": { description: Removed. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: "`no_family`, `forbidden` (not the owner) or `cross_origin`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/family/invites:
+    post:
+      tags: [family]
+      operationId: createInvite
+      summary: Create an invite link
+      description: |
+        Creates a single-use invite valid for 7 days. The token is returned
+        only once. The link carries it in the URL fragment (`#...`), which
+        browsers never send to servers, so it does not appear in logs.
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invite" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NoFamily" }
+
+  /api/invites/accept:
+    post:
+      tags: [family]
+      operationId: acceptInvite
+      summary: Join a family by invite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token: { type: string, description: Token from the invite link. }
+      responses:
+        "200":
+          description: Joined.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Family" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/CrossOrigin" }
+        "404":
+          description: "`invite_invalid`: unknown, expired or already used."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+
+  /api/events:
+    get:
+      tags: [events]
+      operationId: listEvents
+      summary: List events in a time range
+      description: Events of the family that overlap the half-open range `[from, to)`, ordered by start. The range may be at most 400 days.
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date-time }, example: "2026-11-01T00:00:00Z" }
+        - { name: to, in: query, required: true, schema: { type: string, format: date-time }, example: "2026-12-01T00:00:00Z" }
+      responses:
+        "200":
+          description: Events.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Event" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NoFamily" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    post:
+      tags: [events]
+      operationId: createEvent
+      summary: Create an event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EventInput" }
+      responses:
+        "201":
+          description: Created. `Location` points to the new event.
+          headers:
+            Location: { schema: { type: string }, description: URL of the event. }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NoFamily" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /api/events/{id}:
+    parameters:
+      - $ref: "#/components/parameters/EventId"
+    get:
+      tags: [events]
+      operationId: getEvent
+      summary: Get an event
+      responses:
+        "200":
+          description: The event.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NoFamily" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [events]
+      operationId: updateEvent
+      summary: Replace an event
+      description: Any family member may edit any family event. If `participantIds` is omitted the participants are kept; an empty list removes all.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EventInput" }
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NoFamily" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      tags: [events]
+      operationId: deleteEvent
+      summary: Delete an event
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NoFamily" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/events/{id}/participants:
+    parameters:
+      - $ref: "#/components/parameters/EventId"
+    post:
+      tags: [events]
+      operationId: addEventParticipant
+      summary: Add a family member to an event
+      description: Adding someone who already participates succeeds without changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [userId]
+              properties:
+                userId: { type: string, format: uuid }
+      responses:
+        "204": { description: Added. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NoFamily" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /api/events/{id}/participants/{userId}:
+    parameters:
+      - $ref: "#/components/parameters/EventId"
+      - $ref: "#/components/parameters/UserId"
+    delete:
+      tags: [events]
+      operationId: removeEventParticipant
+      summary: Remove a participant from an event
+      responses:
+        "204": { description: Removed. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NoFamily" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /healthz:
+    get:
+      tags: [health]
+      operationId: healthz
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: The process is up.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+  /readyz:
+    get:
+      tags: [health]
+      operationId: readyz
+      summary: Readiness probe
+      security: []
+      responses:
+        "200":
+          description: Ready to serve traffic.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: "`not_ready` (starting or stopping) or `db_unavailable`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: __Host-session
+      description: Session cookie set by `/auth/callback` (named `session` in local HTTP development).
+
+  parameters:
+    EventId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable code.
+              examples: [validation_failed, not_found, no_family, unauthenticated]
+            message:
+              type: string
+              description: Human-readable description.
+            fields:
+              type: object
+              description: Invalid fields and why (only for `validation_failed`).
+              additionalProperties: { type: string }
+
+    User:
+      type: object
+      required: [id, email, name, avatarUrl]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        avatarUrl: { type: [string, "null"], format: uri }
+
+    Family:
+      type: object
+      required: [id, name, role]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+
+    Role:
+      type: string
+      enum: [owner, member]
+
+    Me:
+      type: object
+      required: [user, family]
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        family:
+          description: "`null` until the user creates or joins a family."
+          oneOf:
+            - $ref: "#/components/schemas/Family"
+            - type: "null"
+
+    FamilyMember:
+      type: object
+      required: [userId, email, name, avatarUrl, role, joinedAt]
+      properties:
+        userId: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        avatarUrl: { type: [string, "null"], format: uri }
+        role: { $ref: "#/components/schemas/Role" }
+        joinedAt: { type: string, format: date-time }
+
+    Invite:
+      type: object
+      required: [token, url, expiresAt]
+      properties:
+        token: { type: string, description: Shown once; only its hash is stored. }
+        url: { type: string, format: uri, example: "https://calendar.example.com/invite#3q2-7w..." }
+        expiresAt: { type: string, format: date-time }
+
+    Participant:
+      type: object
+      required: [userId, name, avatarUrl]
+      properties:
+        userId: { type: string, format: uuid }
+        name: { type: string }
+        avatarUrl: { type: [string, "null"], format: uri }
+
+    EventInput:
+      type: object
+      additionalProperties: false
+      required: [title, startsAt, endsAt]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200, description: Leading and trailing spaces are trimmed. }
+        description: { type: string, maxLength: 5000, default: "" }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time, description: Not before startsAt; at most 366 days after it. }
+        allDay: { type: boolean, default: false }
+        participantIds:
+          type: array
+          maxItems: 50
+          description: Family members attending. Duplicates are ignored.
+          items: { type: string, format: uuid }
+
+    Event:
+      type: object
+      required: [id, title, description, startsAt, endsAt, allDay, createdBy, createdAt, updatedAt, participants]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        allDay: { type: boolean }
+        createdBy:
+          type: [string, "null"]
+          format: uuid
+          description: "`null` if the author has been deleted."
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        participants:
+          type: array
+          items: { $ref: "#/components/schemas/Participant" }
+
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ok, ready] }
+        version: { type: string }
+
+  responses:
+    BadRequest:
+      description: "`invalid_json`: malformed body, unknown field or wrong type."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthenticated:
+      description: "`unauthenticated`: no valid session."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NoFamily:
+      description: "`no_family`: create or join a family first; or `cross_origin` for cross-site writes."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    CrossOrigin:
+      description: "`cross_origin`: cross-site state-changing request blocked."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: "`not_found`: does not exist or belongs to another family."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: "`already_in_family` or `owner_cannot_leave`."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    TooLarge:
+      description: "`body_too_large`: body exceeds 64 KiB."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    UnsupportedMediaType:
+      description: "`unsupported_media_type`: Content-Type must be application/json."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ValidationFailed:
+      description: "`validation_failed`: see `error.fields`."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error:
+              code: validation_failed
+              message: some fields are invalid
+              fields: { title: required, endsAt: must not be before startsAt }
+    RateLimited:
+      description: "`rate_limited`: too many requests."
+      headers:
+        Retry-After:
+          schema: { type: integer }
+          description: Seconds to wait.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }

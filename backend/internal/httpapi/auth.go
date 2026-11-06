@@ -183,7 +183,9 @@ func (a *API) requireUser(next http.HandlerFunc) http.HandlerFunc {
 			http.SetCookie(w, au.Cookies.Session(ck.Value, au.Sessions.TTL()))
 		}
 
-		// Every log line of this request now carries the user ID.
+		// Every log line of this request, including the access log, now
+		// carries the user ID.
+		setRequestUser(r.Context(), sess.User.ID.String())
 		log := logFrom(r.Context()).With(slog.String("user_id", sess.User.ID.String()))
 		ctx := context.WithValue(r.Context(), loggerKey, log)
 		ctx = context.WithValue(ctx, sessionCtxKey{}, sess)

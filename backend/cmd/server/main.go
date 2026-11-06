@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/AndreyZubov/family-calendar/backend/internal/auth"
+	"github.com/AndreyZubov/family-calendar/backend/internal/calendar"
 	"github.com/AndreyZubov/family-calendar/backend/internal/config"
 	"github.com/AndreyZubov/family-calendar/backend/internal/httpapi"
 	"github.com/AndreyZubov/family-calendar/backend/internal/store"
@@ -68,7 +69,8 @@ func run() error {
 
 	api, err := httpapi.New(httpapi.Deps{
 		Log: log, DB: db, Version: version, Auth: authDeps,
-		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
+		Calendar: calendar.NewService(db),
+		BaseURL:  cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	})
 	if err != nil {
 		return err

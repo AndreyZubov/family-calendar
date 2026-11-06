@@ -28,7 +28,23 @@ type ctxKey int
 const (
 	requestIDKey ctxKey = iota
 	loggerKey
+	requestInfoKey
 )
+
+// requestInfo collects facts discovered while handling a request (e.g. who
+// the user is) so the access log line, written after the handler returns,
+// can include them. Stored in the context as a pointer so inner middleware
+// can fill it in.
+type requestInfo struct {
+	userID string
+}
+
+// setRequestUser records the authenticated user for the access log.
+func setRequestUser(ctx context.Context, userID string) {
+	if info, ok := ctx.Value(requestInfoKey).(*requestInfo); ok {
+		info.userID = userID
+	}
+}
 
 // RequestIDHeader carries the request ID to and from clients and proxies.
 const RequestIDHeader = "X-Request-ID"
@@ -80,7 +96,9 @@ func accessLog(base *slog.Logger) Middleware {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			log := base.With(slog.String("request_id", RequestIDFrom(r.Context())))
+			info := &requestInfo{}
 			ctx := context.WithValue(r.Context(), loggerKey, log)
+			ctx = context.WithValue(ctx, requestInfoKey, info)
 
 			rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 			next.ServeHTTP(rec, r.WithContext(ctx))
@@ -94,14 +112,18 @@ func accessLog(base *slog.Logger) Middleware {
 			}
 			// Log the path only: query strings may carry tokens (e.g. the
 			// OIDC callback's ?code=...).
-			log.LogAttrs(ctx, level, "http request",
+			attrs := []slog.Attr{
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.Int("status", rec.status),
 				slog.Int64("bytes", rec.bytes),
 				slog.Float64("duration_ms", float64(time.Since(start).Microseconds())/1000),
 				slog.String("client_ip", ClientIPFrom(ctx).String()),
-			)
+			}
+			if info.userID != "" {
+				attrs = append(attrs, slog.String("user_id", info.userID))
+			}
+			log.LogAttrs(ctx, level, "http request", attrs...)
 		})
 	}
 }

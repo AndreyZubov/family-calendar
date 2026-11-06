@@ -17,6 +17,8 @@ type errorBody struct {
 type errorDetail struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// Fields maps invalid input fields to reasons (validation_failed only).
+	Fields map[string]string `json:"fields,omitempty"`
 }
 
 // writeJSON writes v as a JSON response with the given status.

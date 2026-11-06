@@ -410,3 +410,23 @@ func TestAuthCodeNotLogged(t *testing.T) {
 		}
 	}
 }
+
+func TestAccessLogIncludesUserID(t *testing.T) {
+	h := newAuthHarness(t, true)
+	flow, state := h.login(t, "")
+	resp := h.request(http.MethodGet, "/auth/callback?code=good-code&state="+url.QueryEscape(state), flow)
+	sess := findCookie(resp, "__Host-session")
+	h.logs.Reset()
+
+	h.request(http.MethodGet, "/api/me", sess)
+	var line map[string]any
+	for _, l := range strings.Split(strings.TrimSpace(h.logs.String()), "\n") {
+		_ = json.Unmarshal([]byte(l), &line)
+		if line["msg"] == "http request" {
+			break
+		}
+	}
+	if line["msg"] != "http request" || line["user_id"] == nil || line["user_id"] == "" {
+		t.Errorf("access log line lacks user_id: %v", line)
+	}
+}
