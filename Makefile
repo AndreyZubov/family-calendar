@@ -59,8 +59,12 @@ dev: db-up ## Start Postgres, backend and frontend dev server
 run-backend: ## Run the Go API server
 	cd $(BACKEND_DIR) && go run ./cmd/server
 
+.PHONY: frontend-install
+frontend-install: ## Install frontend dependencies exactly as locked
+	cd $(FRONTEND_DIR) && npm ci
+
 .PHONY: run-frontend
-run-frontend: ## Run the Vite dev server
+run-frontend: ## Run the Vite dev server (proxies /api and /auth to :8080)
 	cd $(FRONTEND_DIR) && npm run dev
 
 .PHONY: db-up
@@ -72,11 +76,15 @@ db-down: ## Stop local Postgres (data volume is kept)
 	docker compose -f $(DEV_COMPOSE) down
 
 .PHONY: generate
-generate: generate-backend ## Run code generators
+generate: generate-backend generate-frontend ## Run code generators
 
 .PHONY: generate-backend
 generate-backend: ## Generate Go code from SQL queries (sqlc)
 	cd $(BACKEND_DIR) && $(SQLC) generate
+
+.PHONY: generate-frontend
+generate-frontend: ## Generate TypeScript API types from backend/api/openapi.yaml
+	cd $(FRONTEND_DIR) && npm run generate:api
 
 .PHONY: sqlc-check
 sqlc-check: ## Fail if generated sqlc code is out of date (for CI)
@@ -112,7 +120,7 @@ lint-backend:
 
 .PHONY: lint-frontend
 lint-frontend:
-	cd $(FRONTEND_DIR) && npm run lint && npm run typecheck
+	cd $(FRONTEND_DIR) && npm run lint && npm run typecheck && npm run format:check
 
 .PHONY: test
 test: test-backend test-frontend ## Run all tests
