@@ -3,63 +3,35 @@ package calendar
 import (
 	"context"
 	"errors"
-	"log/slog"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/AndreyZubov/family-calendar/backend/internal/store"
 	"github.com/AndreyZubov/family-calendar/backend/internal/store/db"
+	"github.com/AndreyZubov/family-calendar/backend/internal/testdb"
 )
 
-// fixture is a service on a real database. Everything a test creates is
-// deleted in Cleanup (the service commits its own transactions, so the
-// rollback trick from the store tests does not apply here).
+// fixture is a service on its own fresh database (see package testdb):
+// tests run in parallel and need no cleanup — the database is dropped.
 type fixture struct {
 	t   *testing.T
 	ctx context.Context
 	st  *store.Store
 	svc *Service
-
-	users    []uuid.UUID
-	families []uuid.UUID
 }
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	url := os.Getenv("TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("TEST_DATABASE_URL not set")
-	}
+	t.Parallel()
 	ctx := context.Background()
-	st, err := store.New(ctx, store.Config{URL: url})
+	st, err := store.New(ctx, store.Config{URL: testdb.New(t), MaxConns: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Migrate(ctx, slog.New(slog.DiscardHandler)); err != nil {
-		t.Fatal(err)
-	}
-	f := &fixture{t: t, ctx: ctx, st: st, svc: NewService(st)}
-	t.Cleanup(func() {
-		conn, err := pgx.Connect(ctx, url)
-		if err != nil {
-			t.Errorf("cleanup connect: %v", err)
-			return
-		}
-		defer conn.Close(ctx)
-		// Families first: cascades to members, events, participants, invites.
-		if _, err := conn.Exec(ctx, "DELETE FROM families WHERE id = ANY($1)", f.families); err != nil {
-			t.Errorf("cleanup families: %v", err)
-		}
-		if _, err := conn.Exec(ctx, "DELETE FROM users WHERE id = ANY($1)", f.users); err != nil {
-			t.Errorf("cleanup users: %v", err)
-		}
-		st.Close()
-	})
-	return f
+	t.Cleanup(st.Close)
+	return &fixture{t: t, ctx: ctx, st: st, svc: NewService(st)}
 }
 
 func (f *fixture) user(name string) uuid.UUID {
@@ -71,7 +43,6 @@ func (f *fixture) user(name string) uuid.UUID {
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	f.users = append(f.users, u.ID)
 	return u.ID
 }
 
@@ -81,7 +52,6 @@ func (f *fixture) family(owner uuid.UUID, name string) Member {
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	f.families = append(f.families, m.FamilyID)
 	return m
 }
 

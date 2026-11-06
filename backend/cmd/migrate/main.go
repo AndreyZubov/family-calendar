@@ -25,7 +25,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" database/sql driver
 	"github.com/pressly/goose/v3"
 
-	"github.com/AndreyZubov/family-calendar/backend/internal/store"
+	"github.com/AndreyZubov/family-calendar/backend/migrations"
 )
 
 func main() {
@@ -79,14 +79,14 @@ func run() error {
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	p, err := store.NewMigrator(db)
+	p, err := migrations.NewProvider(db)
 	if err != nil {
 		return err
 	}
 
 	switch args[0] {
 	case "up":
-		return store.Migrate(ctx, db, log)
+		return migrations.Up(ctx, db, log)
 
 	case "down":
 		r, err := p.Down(ctx)

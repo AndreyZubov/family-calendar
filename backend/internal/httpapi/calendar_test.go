@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -18,23 +17,22 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/AndreyZubov/family-calendar/backend/internal/auth"
 	"github.com/AndreyZubov/family-calendar/backend/internal/calendar"
 	"github.com/AndreyZubov/family-calendar/backend/internal/store"
 	"github.com/AndreyZubov/family-calendar/backend/internal/store/db"
+	"github.com/AndreyZubov/family-calendar/backend/internal/testdb"
 )
 
-// apiEnv runs the full HTTP stack against a real database. Users get a
-// session directly (the sign-in flow itself is covered in auth_test.go).
+// apiEnv runs the full HTTP stack against its own fresh database. Users get
+// a session directly (the sign-in flow itself is covered in auth_test.go).
 type apiEnv struct {
 	t        *testing.T
 	ctx      context.Context
 	api      *API
 	st       *store.Store
 	sessions *auth.Sessions
-	users    []uuid.UUID
 	ip       atomic.Int32
 }
 
@@ -45,18 +43,13 @@ type apiUser struct {
 
 func newAPIEnv(t *testing.T) *apiEnv {
 	t.Helper()
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL not set")
-	}
+	t.Parallel()
 	ctx := context.Background()
-	st, err := store.New(ctx, store.Config{URL: dsn})
+	st, err := store.New(ctx, store.Config{URL: testdb.New(t), MaxConns: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Migrate(ctx, slog.New(slog.DiscardHandler)); err != nil {
-		t.Fatal(err)
-	}
+	t.Cleanup(st.Close)
 	flow, _ := auth.NewFlowSealer(bytes.Repeat([]byte{1}, 32))
 	sessions := auth.NewSessions(st, time.Hour)
 	base, _ := url.Parse("https://calendar.example.com")
@@ -72,20 +65,7 @@ func newAPIEnv(t *testing.T) *apiEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &apiEnv{t: t, ctx: ctx, api: api, st: st, sessions: sessions}
-	t.Cleanup(func() {
-		conn, err := pgx.Connect(ctx, dsn)
-		if err == nil {
-			// Deleting users cascades to sessions and memberships; then
-			// remove families left without members.
-			_, _ = conn.Exec(ctx, `DELETE FROM families WHERE id IN (
-				SELECT family_id FROM family_members WHERE user_id = ANY($1))`, e.users)
-			_, _ = conn.Exec(ctx, "DELETE FROM users WHERE id = ANY($1)", e.users)
-			conn.Close(ctx)
-		}
-		st.Close()
-	})
-	return e
+	return &apiEnv{t: t, ctx: ctx, api: api, st: st, sessions: sessions}
 }
 
 func (e *apiEnv) user(name string) apiUser {
@@ -96,7 +76,6 @@ func (e *apiEnv) user(name string) apiUser {
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	e.users = append(e.users, u.ID)
 	token, _, err := e.sessions.Create(e.ctx, u.ID)
 	if err != nil {
 		e.t.Fatal(err)

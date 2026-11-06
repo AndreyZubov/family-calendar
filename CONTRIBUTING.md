@@ -31,12 +31,18 @@ make dev
 1. Fork the repository and create a branch from `main`:
    `git checkout -b feat/short-description`
 2. Make your change. Keep pull requests focused on one thing.
-3. Add or update tests for the behavior you changed.
+3. Add or update tests for the behavior you changed. Tests that need a
+   database call `testdb.New(t)`, which gives each test its own fresh,
+   migrated database.
 4. Make sure everything passes locally:
    ```sh
    make lint
    make test
    ```
+   Database tests start a throwaway PostgreSQL in Docker
+   ([testcontainers](https://golang.testcontainers.org/)), so Docker must be
+   running. Without Docker, `make test-short` runs the unit tests only;
+   `make test-db` reuses the local dev database instead of containers.
 5. If you changed SQL queries or the OpenAPI spec, regenerate code with
    `make generate` and commit the result.
 6. Open a pull request and fill in the template.

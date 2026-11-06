@@ -4,32 +4,25 @@ import (
 	"context"
 	"crypto/sha256"
 	"log/slog"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/AndreyZubov/family-calendar/backend/internal/store/db"
+	"github.com/AndreyZubov/family-calendar/backend/internal/testdb"
 )
 
-// openTestStore connects to TEST_DATABASE_URL and applies migrations.
-// The test is skipped when the variable is not set.
+// openTestStore connects to a fresh, migrated database of its own (see
+// package testdb), so tests run in parallel without seeing each other's data.
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
-	url := os.Getenv("TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("TEST_DATABASE_URL not set")
-	}
-	ctx := context.Background()
-	s, err := New(ctx, Config{URL: url})
+	t.Parallel()
+	s, err := New(context.Background(), Config{URL: testdb.New(t), MaxConns: 2})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	t.Cleanup(s.Close)
-	if err := s.Migrate(ctx, slog.New(slog.DiscardHandler)); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
 	return s
 }
 
@@ -246,5 +239,47 @@ func TestInTxRollsBackOnError(t *testing.T) {
 	}
 	if n != 0 {
 		t.Errorf("user was committed despite error")
+	}
+}
+
+func TestMigrateAndPing(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	if err := s.Ping(ctx); err != nil {
+		t.Fatalf("Ping: %v", err)
+	}
+	// The database is already migrated: Migrate must be a no-op.
+	if err := s.Migrate(ctx, slog.New(slog.DiscardHandler)); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+}
+
+func TestErrorClassification(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	// CHECK: family name must not be empty.
+	_, err := s.CreateFamily(ctx, "")
+	if !IsCheckViolation(err) || IsUniqueViolation(err) || IsForeignKeyViolation(err) {
+		t.Errorf("empty family name: %v", err)
+	}
+
+	// UNIQUE: the same membership twice.
+	err = s.InTx(ctx, func(q *db.Queries) error {
+		u := mustUser(ctx, t, q, "alice")
+		f := mustFamily(ctx, t, q, u)
+		return q.AddFamilyMember(ctx, db.AddFamilyMemberParams{FamilyID: f.ID, UserID: u.ID, Role: "member"})
+	})
+	if !IsUniqueViolation(err) || IsCheckViolation(err) {
+		t.Errorf("duplicate membership: %v", err)
+	}
+
+	// Not found.
+	if _, err := s.GetUserByID(ctx, uuid.New()); !IsNotFound(err) {
+		t.Errorf("unknown user: %v", err)
+	}
+	// Unrelated errors are not misclassified.
+	if IsNotFound(nil) || IsUniqueViolation(context.Canceled) {
+		t.Error("misclassified non-database error")
 	}
 }

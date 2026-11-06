@@ -117,13 +117,25 @@ lint-frontend:
 .PHONY: test
 test: test-backend test-frontend ## Run all tests
 
+# DB integration tests get a throwaway Postgres from testcontainers (needs
+# Docker). Each test runs in its own database cloned from a migrated template.
 .PHONY: test-backend
-test-backend:
+test-backend: ## Run backend tests (DB tests start Postgres in Docker)
 	cd $(BACKEND_DIR) && go test -race -count=1 ./...
 
+.PHONY: test-short
+test-short: ## Run backend unit tests only (no Docker, no database)
+	cd $(BACKEND_DIR) && go test -short -race -count=1 ./...
+
 .PHONY: test-db
-test-db: db-up ## Run backend tests including DB integration tests (local Postgres)
+test-db: db-up ## Run backend tests against the local dev Postgres (faster, no containers)
 	cd $(BACKEND_DIR) && TEST_DATABASE_URL="$(DATABASE_URL)" go test -race -count=1 ./...
+
+.PHONY: cover
+cover: ## Backend test coverage report (opens coverage.html)
+	cd $(BACKEND_DIR) && go test -count=1 -coverpkg=./internal/... -coverprofile=coverage.out ./... \
+		&& go tool cover -func=coverage.out | tail -1 \
+		&& go tool cover -html=coverage.out -o coverage.html
 
 .PHONY: test-frontend
 test-frontend:

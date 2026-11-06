@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeDB struct{ err error }
@@ -157,5 +158,25 @@ func TestAccessLogOmitsQueryString(t *testing.T) {
 	do(api, http.MethodGet, "/api/callback?code=secret-oauth-code", nil)
 	if strings.Contains(logs.String(), "secret-oauth-code") {
 		t.Errorf("query string leaked into logs:\n%s", logs)
+	}
+}
+
+func TestNewServerHasTimeouts(t *testing.T) {
+	srv := NewServer(":0", http.NotFoundHandler(), slog.New(slog.DiscardHandler))
+	if srv.ReadHeaderTimeout == 0 || srv.ReadTimeout == 0 || srv.WriteTimeout == 0 || srv.IdleTimeout == 0 || srv.MaxHeaderBytes == 0 {
+		t.Errorf("server without limits: %+v", srv)
+	}
+}
+
+func TestRunBackgroundStopsWithContext(t *testing.T) {
+	api, _ := newTestAPI(t, fakeDB{})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { api.RunBackground(ctx); close(done) }()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("RunBackground did not return after cancel")
 	}
 }

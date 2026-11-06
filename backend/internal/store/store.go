@@ -23,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/AndreyZubov/family-calendar/backend/internal/store/db"
+	"github.com/AndreyZubov/family-calendar/backend/migrations"
 )
 
 // Config holds connection settings.
@@ -87,7 +88,7 @@ func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 func (s *Store) Migrate(ctx context.Context, log *slog.Logger) error {
 	sqlDB := stdlib.OpenDBFromPool(s.pool)
 	defer sqlDB.Close()
-	return Migrate(ctx, sqlDB, log)
+	return migrations.Up(ctx, sqlDB, log)
 }
 
 // InTx runs fn inside a transaction. It commits if fn returns nil and rolls
