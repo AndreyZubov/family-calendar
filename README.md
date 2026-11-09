@@ -96,6 +96,21 @@ The container serves the API and the UI on port 8080 and applies database
 migrations on startup. It is configured only through environment variables —
 see [`.env.example`](.env.example).
 
+## Releases
+
+Releases are automated with [release-please](https://github.com/googleapis/release-please):
+commits on `main` (Conventional Commits) keep a release pull request up to date
+with the next version and changelog; merging it tags the release, and the image
+is published to `ghcr.io/andreyzubov/family-calendar` for `linux/amd64` and
+`linux/arm64` — only after passing a vulnerability scan and a smoke test. Each
+image carries an SBOM and a signed build provenance attestation:
+
+```sh
+gh attestation verify oci://ghcr.io/andreyzubov/family-calendar:<version> --repo AndreyZubov/family-calendar
+```
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 ## Deployment
 
 Production setup (Docker Compose with Caddy for HTTPS) is described in

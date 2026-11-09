@@ -21,8 +21,14 @@ docker compose ps
 ```
 
 Caddy requests the certificate on first start. Migrations run when the app
-starts. Update to a new release by changing `APP_VERSION` in `.env` and running
-`docker compose up -d --wait` again.
+starts. Update to a new release by changing `APP_VERSION` in `.env` (versions
+are listed on the GitHub Releases page) and running `docker compose up -d --wait`
+again.
+
+The image is published to `ghcr.io/andreyzubov/family-calendar`. If the
+package is private, run `docker login ghcr.io` on the server with a token that
+has `read:packages`; making the package public (Package settings → Change
+visibility) avoids that.
 
 ## What the stack enforces
 

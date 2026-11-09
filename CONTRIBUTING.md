@@ -71,6 +71,10 @@ docs: describe deployment on a VPS
 ```
 
 Common types: `feat`, `fix`, `docs`, `refactor`, `test`, `build`, `ci`, `chore`.
+The pull request title is what lands on `main` (squash merge), so it must
+follow this format too. `feat` bumps the minor version, `fix` the patch
+version, and a breaking change the major version; `feat`, `fix`, `perf` and
+`build` appear in the changelog.
 Mark breaking changes with `!` after the type (`feat!: ...`) or a
 `BREAKING CHANGE:` footer.
 
