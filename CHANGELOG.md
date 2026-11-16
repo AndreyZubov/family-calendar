@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.0.0 (2026-11-16)
+
+
+### Features
+
+* **api:** add family, invite and event endpoints with OpenAPI spec ([30cc803](https://github.com/AndreyZubov/family-calendar/commit/30cc803f04d00938ba3464816a11a83c1b60975a))
+* **auth:** add OIDC sign-in with PKCE and server-side sessions ([aeea185](https://github.com/AndreyZubov/family-calendar/commit/aeea1858cd8d2e11e630f80bbaab05fdc1028747))
+* **db:** add initial schema and embedded goose migrations ([65fd319](https://github.com/AndreyZubov/family-calendar/commit/65fd31914c0b1dbcbfb0d4a3a3685bbb4f57194c))
+* **db:** add sqlc queries and pgx connection pool ([9c3bcc6](https://github.com/AndreyZubov/family-calendar/commit/9c3bcc62dca9de281c7faaf185afe30ea9b528c7))
+* **frontend:** add calendar, event form, family and invite screens ([8de0cbb](https://github.com/AndreyZubov/family-calendar/commit/8de0cbb33f3a5ab1708d0983716a7bfd0752aa6a))
+* **frontend:** scaffold Vite + React app with typed API client ([6a574ff](https://github.com/AndreyZubov/family-calendar/commit/6a574ff67673dd3ee1e2c0110c752aecc5fff33c))
+* **security:** add CSRF protection, security headers, rate limits and body limit ([ec3674d](https://github.com/AndreyZubov/family-calendar/commit/ec3674dc4c280e4d8ec590140558d1b125990ee5))
+* **server:** add HTTP server with config, middleware and health checks ([96829f8](https://github.com/AndreyZubov/family-calendar/commit/96829f8653806028e7fa653e104135ab508797de))
+
+
+### Build and Dependencies
+
+* **deploy:** add production Compose stack with Caddy HTTPS ([986f999](https://github.com/AndreyZubov/family-calendar/commit/986f999768c82baa44ecc833eb88a397dcf6cda2))
+* **docker:** add distroless image with embedded frontend ([f96bc9b](https://github.com/AndreyZubov/family-calendar/commit/f96bc9b241830a53c278c85017cb9c32926702b4))
+* **go:** require Go 1.27 ([1b431e0](https://github.com/AndreyZubov/family-calendar/commit/1b431e07e169619fac3ac34d70a6bb36235b38a7))
+
+## Changelog
+
 All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
